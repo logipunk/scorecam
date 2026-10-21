@@ -156,6 +156,20 @@ def find_card_mask(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Tar
     return mask, theta
 
 
+def mask_ignore_regions(card: np.ndarray, px_per_mm: float, T: np.ndarray, target: Target,
+                        theta_card: float) -> np.ndarray:
+    """Blank printed logos and text boxes listed in the target file (mm rectangles
+    relative to the ring centre, in the card's own orientation)."""
+    out = card.copy()
+    c, s_ = np.cos(theta_card), np.sin(theta_card)
+    for (x0, y0, x1, y1) in target.ignore_regions_mm:
+        corners = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], np.float64)
+        rot = corners @ np.array([[c, s_], [-s_, c]])  # rotate with the card
+        pts = np.round(np.array([T[0, 2], T[1, 2]]) + rot * px_per_mm).astype(np.int32)
+        cv2.fillConvexPoly(out, pts, 0)
+    return out
+
+
 def _extents(strip: np.ndarray, axis: int) -> tuple[float, float]:
     """Median first/last foreground index across the lines of a strip."""
     has = strip.any(axis=axis)
@@ -313,6 +327,7 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
                  cal: Calibration | None = None, pellet_mm: float = 4.5,
                  ) -> tuple[list[Hole], DetectionDebug]:
     card, theta_card = find_card_mask(bgr, px_per_mm, T, target)
+    card = mask_ignore_regions(card, px_per_mm, T, target, theta_card)
     white_zone, black_zone = zone_masks(bgr.shape, px_per_mm, T, target, cal if ZONES_FOLLOW_RINGS else None)
     white_zone &= card > 0
     black_zone &= card > 0

@@ -13,6 +13,10 @@ uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt
 .venv/bin/python scripts/measure_target.py gamo_bone_collector_14cm test-cards/focus*.jpg
 ```
 
+Targets (`targets/`): `nra_b2` and `nra_b3` (50 ft bullseye, 2020 NRA rulebook rules
+4.2/4.3), `issf_10m_air_pistol` (NRA B-40), `gamo_bone_collector_14cm` (first test cards,
+measured from photos). Caliber is a setting: `--caliber 5.6` for .22 LR, `11.5` for .45.
+
 Layout: `scorecam/` library (`target`, `scoring`, `calibrate`, `detect`, `pipeline`, `annotate`),
 `scripts/` CLI entry points, `tests/`, `targets/` target definitions (YAML data, no code).
 

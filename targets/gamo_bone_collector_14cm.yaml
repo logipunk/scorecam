@@ -31,3 +31,11 @@ outer_color: white
 numeral_angles_deg: [0, 90, 180, 270]
 numeral_rings: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 inner_ring_radius_mm: null
+# Printed logos and text boxes (x0, y0, x1, y1 in mm from the ring centre, y down):
+# holes inside these are ignored. Measured on a rectified card.
+ignore_regions_mm:
+  - [-70, -70, -36, -56]   # "Bone Collector" logo, top left
+  - [36, -70, 70, -59]     # GAMO logo, top right
+  - [-70, 56, -43, 63]     # BLANCO box
+  - [-70, 65, -43, 72]     # PUNTUACION box
+  - [40, 54, 70, 72]       # NOMBRE DEL TIRADOR box

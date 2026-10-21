@@ -22,3 +22,5 @@ inner_ring_radius_mm: null
 # Ring numerals: positions not entered yet (check a scan); empty = no numeral filtering.
 numeral_angles_deg: []
 numeral_rings: []
+# Printed header/footer text (x0, y0, x1, y1 in mm from the ring centre): TODO from a scan.
+ignore_regions_mm: []

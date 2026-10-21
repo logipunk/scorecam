@@ -17,3 +17,5 @@ outer_color: white
 inner_ring_radius_mm: 11.43   # X ring, 0.90 in diameter
 numeral_angles_deg: []
 numeral_rings: []
+# Printed header/footer text (x0, y0, x1, y1 in mm from the ring centre): TODO from a scan.
+ignore_regions_mm: []

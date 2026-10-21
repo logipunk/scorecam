@@ -35,6 +35,7 @@ class Target:
     inner_ring_radius_mm: float | None
     numeral_angles_deg: tuple[float, ...] = ()  # where ring numerals are printed (0 = right, 90 = down)
     numeral_rings: tuple[int, ...] = ()  # ring values that carry a printed numeral
+    ignore_regions_mm: tuple[tuple[float, float, float, float], ...] = ()  # printed text boxes/logos: x0,y0,x1,y1
 
     @property
     def outer_radius_mm(self) -> float:
@@ -92,4 +93,5 @@ def load_target(name_or_path: str | Path) -> Target:
         inner_ring_radius_mm=d.get("inner_ring_radius_mm"),
         numeral_angles_deg=tuple(float(a) for a in d.get("numeral_angles_deg", [])),
         numeral_rings=tuple(int(v) for v in d.get("numeral_rings", [])),
+        ignore_regions_mm=tuple(tuple(float(v) for v in r) for r in d.get("ignore_regions_mm", [])),
     )
