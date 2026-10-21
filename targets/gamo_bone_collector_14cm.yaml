@@ -1,0 +1,28 @@
+# Gamo "Bone Collector" 14x14 cm paper card (10 rings, unnumbered inner circle = 10).
+#
+# Ring radii were MEASURED from test-cards/focus3-13.jpg (card rectified by its
+# corners, 140 mm square), not taken from a manufacturer spec. Expect ~1 % scale
+# error; verify with calipers. See scripts/measure_target.py.
+#
+# `radius_mm` is the OUTER radius of the scoring zone with that value.
+# `color` is the printed background of that zone (used to find ring edges).
+name: gamo_bone_collector_14cm
+description: Gamo Bone Collector 14 cm air gun card
+card_mm: [140, 140]
+# Offset of the ring centre from the card centre (x right, y down), mm.
+center_offset_mm: [0, 0]
+rings:
+  - {value: 10, radius_mm: 6.45, color: white}
+  - {value: 9,  radius_mm: 13.0, color: white}
+  - {value: 8,  radius_mm: 19.8, color: black}
+  - {value: 7,  radius_mm: 26.8, color: black}
+  - {value: 6,  radius_mm: 33.1, color: black}
+  - {value: 5,  radius_mm: 40.2, color: white}
+  - {value: 4,  radius_mm: 47.0, color: white}
+  - {value: 3,  radius_mm: 53.5, color: white}
+  - {value: 2,  radius_mm: 60.0, color: white}
+  - {value: 1,  radius_mm: 66.9, color: white}
+# Background outside the last ring.
+outer_color: white
+# Optional inner-ten / X ring (outer radius, mm). null = none.
+inner_ring_radius_mm: null

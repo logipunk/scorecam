@@ -1,0 +1,20 @@
+# ISSF 10 m air pistol target (ISSF rules 6.3.4.3).
+# 10 ring 11.5 mm diameter, each further ring +16 mm diameter, black = rings 7-10.
+# Inner ten 5.0 mm diameter.
+name: issf_10m_air_pistol
+description: ISSF 10 m air pistol
+card_mm: [170, 170]
+center_offset_mm: [0, 0]
+rings:
+  - {value: 10, radius_mm: 5.75,  color: black}
+  - {value: 9,  radius_mm: 13.75, color: black}
+  - {value: 8,  radius_mm: 21.75, color: black}
+  - {value: 7,  radius_mm: 29.75, color: black}
+  - {value: 6,  radius_mm: 37.75, color: white}
+  - {value: 5,  radius_mm: 45.75, color: white}
+  - {value: 4,  radius_mm: 53.75, color: white}
+  - {value: 3,  radius_mm: 61.75, color: white}
+  - {value: 2,  radius_mm: 69.75, color: white}
+  - {value: 1,  radius_mm: 77.75, color: white}
+outer_color: white
+inner_ring_radius_mm: 2.5
