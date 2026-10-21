@@ -20,7 +20,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("image")
     ap.add_argument("--target", default="gamo_bone_collector_14cm")
-    ap.add_argument("--pellet", type=float, default=4.5)
+    ap.add_argument("--pellet", "--caliber", dest="pellet", type=float, default=4.5,
+                    help="projectile diameter in mm (4.5 pellet, 5.6 for .22 LR, 11.5 for .45)")
     ap.add_argument("--out", default="out")
     ap.add_argument("--cues", action="store_true", help="also write the detection cue maps")
     a = ap.parse_args()

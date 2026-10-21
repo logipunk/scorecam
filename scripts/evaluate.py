@@ -51,7 +51,8 @@ def match(expected: list, found: list) -> tuple[list, list, list]:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", default=None, help="target name; default: from ground truth")
-    ap.add_argument("--pellet", type=float, default=None)
+    ap.add_argument("--pellet", "--caliber", dest="pellet", type=float, default=None,
+                    help="projectile diameter in mm; default from the ground truth file")
     ap.add_argument("--out", default="out")
     ap.add_argument("--cues", action="store_true")
     ap.add_argument("--gt", default="test-cards/ground_truth.yaml")

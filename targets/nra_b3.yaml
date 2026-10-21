@@ -1,0 +1,19 @@
+# NRA B-3: 50 foot timed and rapid fire pistol target.
+# Source: 2020 NRA Precision Pistol Rulebook, rule 4.3. Diameters in inches:
+#   X ring 0.90, 10 ring 1.80, 9 ring 3.06, 8 ring 4.46, 7 ring 6.14, 6 ring 8.32.
+#   Rings 9 and 10 are black. No rings below 6: a hit outside the 6 ring scores 0.
+# Edge rule (rule 14.3): a hole whose leaded edge touches a ring scores the higher value.
+name: nra_b3
+description: NRA B-3 50 ft timed and rapid fire pistol
+card_mm: [266.7, 304.8]   # 10.5 x 12 in sheet
+center_offset_mm: [0, 0]  # TODO: measure on a scan
+rings:
+  - {value: 10, radius_mm: 22.86, color: black}
+  - {value: 9,  radius_mm: 38.86, color: black}
+  - {value: 8,  radius_mm: 56.64, color: white}
+  - {value: 7,  radius_mm: 77.98, color: white}
+  - {value: 6,  radius_mm: 105.66, color: white}
+outer_color: white
+inner_ring_radius_mm: 11.43   # X ring, 0.90 in diameter
+numeral_angles_deg: []
+numeral_rings: []

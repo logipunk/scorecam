@@ -1,0 +1,24 @@
+# NRA B-2: 50 foot slow fire pistol target (50 yard Standard American reduced).
+# Source: 2020 NRA Precision Pistol Rulebook, rule 4.2. Diameters in inches:
+#   10 ring 0.90, 9 ring 1.54, 8 ring 2.23, 7 ring 3.07, 6 ring 4.16, 5 ring 5.56,
+#   4 ring 7.33. Rings 7, 8, 9 and 10 are black. No X ring. No rings below 4:
+#   a hit outside the 4 ring scores 0.
+# Edge rule (rule 14.3): a hole whose leaded edge touches a ring scores the higher value.
+name: nra_b2
+description: NRA B-2 50 ft slow fire pistol
+card_mm: [266.7, 304.8]   # 10.5 x 12 in sheet
+# Offset of the ring centre from the sheet centre (x right, y down), mm. TODO: measure on a scan.
+center_offset_mm: [0, 0]
+rings:
+  - {value: 10, radius_mm: 11.43, color: black}
+  - {value: 9,  radius_mm: 19.56, color: black}
+  - {value: 8,  radius_mm: 28.32, color: black}
+  - {value: 7,  radius_mm: 38.99, color: black}
+  - {value: 6,  radius_mm: 52.83, color: white}
+  - {value: 5,  radius_mm: 70.61, color: white}
+  - {value: 4,  radius_mm: 93.09, color: white}
+outer_color: white
+inner_ring_radius_mm: null
+# Ring numerals: positions not entered yet (check a scan); empty = no numeral filtering.
+numeral_angles_deg: []
+numeral_rings: []

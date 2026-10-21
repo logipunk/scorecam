@@ -29,7 +29,7 @@ BRIGHT_FRAC = 0.20  # rim must be this fraction (of paper level) brighter than l
 WARM_SHIFT = 12.0  # Lab (a+b) shift from the zone's own tint
 FILL_MAX_MM2 = 12.0  # enclosed gaps smaller than this are filled
 OPEN_DISC_MM = 3.2  # opening disc: kills numerals/lines, keeps holes
-RECOVER_MM = 1.0  # grow kept blobs back into the raw mask by this much (torn edges)
+RECOVER_MM = 0.6  # grow kept blobs back into the raw mask by this much (torn edges, not line stubs)
 MIN_DIAMETER_MM = 3.2  # single-hole equivalent diameter range
 MAX_DIAMETER_MM = 6.2
 MIN_ROUNDNESS = 0.55
@@ -47,6 +47,7 @@ MIN_NUMERAL_EXTRA_MM2 = 5.0  # blob area beyond the printed strokes needed to ca
 NUMERAL_EXTRA_OPEN_MM = 2.4  # opening applied to that extra area (drops edge slivers, keeps a hole core)
 INK_LEVEL_FRAC = 0.55  # "ink level" in white zones: darker than this fraction of local paper
 LINE_BAND_MM = 0.6  # half-width of the band blanked around each thin printed ring line
+BRIDGE_MM = 1.4  # closing that rejoins a solid hole cut by a blanked line band
 ZONES_FOLLOW_RINGS = False  # place zone edges at measured ring positions (worse on obstructed cards)
 MAX_SINGLE_LENGTH_MM = 6.5  # a blob longer than this AND elongated holds more than one pellet
 MAX_SINGLE_ASPECT = 1.4  # length / width above which a long blob is an overlap group
@@ -317,9 +318,12 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
     black_zone &= card > 0
     dark, bright, warm, at_paper, printed, paper_level = cue_maps(bgr, px_per_mm, white_zone, black_zone)
     r_map, th_map = polar_maps(bgr.shape, px_per_mm, T)
-    cue = (dark | bright | warm) & ~thin_line_band(r_map, th_map, target, cal)
-    cue = cue.astype(np.uint8)
-    cue = cv2.morphologyEx(cue, cv2.MORPH_CLOSE, _disc(2 * max(EDGE_BAND_MM, LINE_BAND_MM) + 0.2, px_per_mm))
+    band = thin_line_band(r_map, th_map, target, cal)
+    # On white, blank the printed ring lines so they cannot chain numerals and holes together.
+    # In the black a torn rim is itself a thin ring: blanking a line through it cuts it and a
+    # closing cannot reliably rejoin it, so leave the white lines in; the opening below removes them.
+    cue = (bright | ((dark | warm) & ~band)).astype(np.uint8)
+    cue = cv2.morphologyEx(cue, cv2.MORPH_CLOSE, _disc(BRIDGE_MM, px_per_mm))  # across the blanked band
     filled = fill_small_gaps(cue, FILL_MAX_MM2 * px_per_mm ** 2)
     opened = cv2.morphologyEx(filled, cv2.MORPH_OPEN, _disc(OPEN_DISC_MM, px_per_mm))
     # grow the surviving blobs back into the raw mask a little to recover torn edges
@@ -371,7 +375,9 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
                 continue
             holes.append(Hole(shape["x"], shape["y"], shape["diameter"], shape["roundness"], shape["area"],
                               flags=flags, **common))
-        elif 2 <= (n_est := max(2, min(4, int(round(shape["area"] / (single_area * 1.1)))))) and shape["length"] <= 4 * pellet_mm:
+        elif shape["length"] <= 4 * pellet_mm:
+            # how many pellets: no more than the blob's length allows, no more than its area allows
+            n_est = max(2, min(4, int(round(shape["area"] / (single_area * 1.1))), int(round(shape["length"] / pellet_mm))))
             # longer than one pellet: an overlap group (best effort split, flagged)
             for (hx, hy) in split_overlap(c, n_est, pellet_mm, px_per_mm):
                 holes.append(Hole(hx, hy, pellet_mm, shape["roundness"], shape["area"],
