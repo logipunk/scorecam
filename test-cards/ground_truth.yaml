@@ -1,0 +1,74 @@
+# Ground truth for test cards in test-cards/
+# Fill in `score` for each hole (integer ring value, 0 = flier/miss outside rings).
+# `seen` is Claude's read from the downscaled chat copy — a hint only, NOT ground truth.
+# Edge rule: hole touching a ring line scores the higher value.
+
+target:
+  name: gamo_bone_collector_14cm
+  card_mm: [140, 140]
+  ten_ring_diameter_mm: null      # TODO measure inner (10) circle
+  outer_ring_diameter_mm: null    # TODO measure ring 1 outer edge
+  black_diameter_mm: null         # TODO measure black (rings 6-9)
+  pellet_mm: 4.5
+
+capture:
+  distance_m: 9.2
+  camera: rpi_hq_imx477
+  lens: canon_efs_55_250_is
+
+cards:
+  - file: focus.jpg
+    focal_mm: 250
+    notes: "first light, dim/blue cast, dark band at bottom, no lamp"
+    holes:
+      - {seen: "on 9/8 line, 6 o'clock", score: null}
+
+  - file: focus2.jpg
+    focal_mm: 200
+    notes: "lamp; dark obstruction across bottom ~40% of frame"
+    holes:
+      - {seen: "left, touching 10 circle", score: null}
+      - {seen: "center, inside 10", score: null}
+      - {seen: "touching the one above, 10/9 line", score: null}
+
+  - file: focus3.jpg
+    focal_mm: 200
+    notes: "same 3-shot card as focus2, clear view (confirm)"
+    holes:
+      - {seen: "left, touching 10 circle", score: null}
+      - {seen: "center, inside 10", score: null}
+      - {seen: "touching the one above, 10/9 line", score: null}
+
+  - file: focus3-11.jpg
+    focal_mm: 200
+    notes: "all 3 holes in the black"
+    holes:
+      - {seen: "left, 3 o'clock side of 8, on 7/8 line", score: null}
+      - {seen: "upper right, 8 near 9 line", score: null}
+      - {seen: "right, on 7/8 line", score: null}
+
+  - file: focus3-12.jpg
+    focal_mm: 200
+    notes: "softer focus / color fringing"
+    holes:
+      - {seen: "touching 10 circle, 7 o'clock", score: null}
+      - {seen: "in the 8, pale torn hole over the '8' numeral", score: null}
+
+  - file: focus3-13.jpg
+    focal_mm: 200
+    notes: "center shot + flier on card outside rings"
+    holes:
+      - {seen: "inside 10", score: null}
+      - {seen: "lower left near BLANCO box, outside rings", score: 0}
+
+  - file: focus3-14.jpg
+    focal_mm: 200
+    notes: "strong tilt; pale hole on white = hardest case"
+    holes:
+      - {seen: "10/9 line, 4 o'clock", score: null}
+      - {seen: "top right corner, outside rings", score: 0}
+      - {seen: "lower left, pale/light hole, outside rings", score: 0}
+
+# Not shot cards (exclude from scoring tests):
+#   test.jpg      - no-lens blur test
+#   hole_crop.jpg - 800x800 crop of focus.jpg

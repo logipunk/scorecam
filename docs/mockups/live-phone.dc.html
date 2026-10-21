@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Live series – phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#0F1215}
+a{color:#F5A524}a:hover{color:#FFC35C}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 16px; background: #0F1215; color: #E9EDF1; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 12px">
+
+  <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <div style="font-size: 17px; font-weight: 600">10m Air Pistol</div>
+      <div style="font-size: 13px; color: #9AA4AE">Series 1 of 6 · card 2 of 12 · 0:42 ago</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #17201E; border: 1px solid #23413A; font-size: 13px; font-weight: 500; color: #7FE3CF">
+      <span style="width: 8px; height: 8px; border-radius: 999px; background: #34D3B6; display: block"></span>
+      Live · Lane 1
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 8px; align-items: stretch">
+    <div style="flex-grow: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; background: #171B20; border: 1px solid #2A3038; border-radius: 12px">
+      <button aria-pressed="{{plotPressed}}" onClick="{{showPlot}}" style="height: 40px; border: 0; border-radius: 9px; font-size: 14px; font-weight: 600; background: {{plotBg}}; color: {{plotFg}}">Plot</button>
+      <button aria-pressed="{{camPressed}}" onClick="{{showCam}}" style="height: 40px; border: 0; border-radius: 9px; font-size: 14px; font-weight: 600; background: {{camBg}}; color: {{camFg}}">Camera</button>
+    </div>
+    <button style="padding: 0 16px; border-radius: 12px; border: 0; background: #F5A524; color: #1A1206; font-size: 14px; font-weight: 600">Next card</button>
+  </div>
+
+  <div style="width: 358px; height: 358px; border-radius: 14px; overflow: hidden; background: {{frameBg}}; position: relative">
+    <svg viewBox="-82 -82 164 164" width="358" height="358" style="display: block" aria-label="Target with shot positions">
+      <circle cx="0" cy="0" r="77.75" fill="{{paper}}"></circle>
+      <circle cx="0" cy="0" r="29.75" fill="{{black}}"></circle>
+      <sc-for list="{{rings}}" as="ring" hint-placeholder-count="10">
+        <circle cx="0" cy="0" r="{{ring.r}}" fill="none" stroke="{{ring.stroke}}" stroke-width="0.35"></circle>
+      </sc-for>
+      <circle cx="0" cy="0" r="2.5" fill="none" stroke="#E6E6E6" stroke-width="0.3"></circle>
+      <sc-for list="{{labels}}" as="lab" hint-placeholder-count="32">
+        <text x="{{lab.x}}" y="{{lab.y}}" fill="{{lab.fill}}" font-size="3.6" font-family="IBM Plex Mono, monospace" text-anchor="middle" dominant-baseline="central">{{lab.t}}</text>
+      </sc-for>
+      <sc-if value="{{isCam}}" hint-placeholder-val="{{ false }}">
+        <sc-for list="{{shots}}" as="s" hint-placeholder-count="10">
+          <circle cx="{{s.x}}" cy="{{s.y}}" r="2.25" fill="#0A0A0A"></circle>
+        </sc-for>
+        <sc-for list="{{shots}}" as="s" hint-placeholder-count="10">
+          <circle cx="{{s.x}}" cy="{{s.y}}" r="3.4" fill="none" stroke="{{s.color}}" stroke-width="0.8"></circle>
+        </sc-for>
+      </sc-if>
+      <sc-if value="{{isPlot}}" hint-placeholder-val="{{ true }}">
+        <sc-for list="{{shots}}" as="s" hint-placeholder-count="10">
+          <circle cx="{{s.x}}" cy="{{s.y}}" r="2.25" fill="{{s.color}}" stroke="#0B0D0F" stroke-width="0.35"></circle>
+        </sc-for>
+      </sc-if>
+      <sc-for list="{{selectedRing}}" as="sel" hint-placeholder-count="1">
+        <circle cx="{{sel.x}}" cy="{{sel.y}}" r="4.7" fill="none" stroke="#0B0D0F" stroke-width="1.1"></circle>
+        <circle cx="{{sel.x}}" cy="{{sel.y}}" r="4.1" fill="none" stroke="#FFFFFF" stroke-width="0.7"></circle>
+      </sc-for>
+    </svg>
+    <sc-if value="{{isCam}}" hint-placeholder-val="{{ false }}">
+      <div style="position: absolute; left: 10px; bottom: 10px; padding: 4px 8px; border-radius: 6px; background: rgba(15,18,21,0.82); font-size: 12px; color: #E9EDF1">Camera feed · markers overlaid</div>
+    </sc-if>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #171B20; border: 1px solid #2A3038; border-radius: 10px">
+      <div style="font-size: 11px; color: #9AA4AE; text-transform: uppercase; letter-spacing: 0.06em">Total</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600">93</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #171B20; border: 1px solid #2A3038; border-radius: 10px">
+      <div style="font-size: 11px; color: #9AA4AE; text-transform: uppercase; letter-spacing: 0.06em">Decimal</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600">98.3</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #171B20; border: 1px solid #2A3038; border-radius: 10px">
+      <div style="font-size: 11px; color: #9AA4AE; text-transform: uppercase; letter-spacing: 0.06em">Inner 10</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600">2</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #2A2113; border: 1px solid #5A4318; border-radius: 10px">
+      <div style="font-size: 11px; color: #F5C46B; text-transform: uppercase; letter-spacing: 0.06em">Last</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600; color: #F5A524">10.0</div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px">
+    <sc-for list="{{shots}}" as="s" hint-placeholder-count="10">
+      <button onClick="{{s.select}}" aria-label="Shot {{s.n}}, {{s.score}}" style="height: 48px; padding: 4px 6px; border-radius: 10px; background: {{s.chipBg}}; border: 1px solid {{s.chipBorder}}; color: #E9EDF1; display: flex; flex-direction: column; align-items: stretch; justify-content: space-between">
+        <span style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #9AA4AE">
+          <span>{{s.n}}</span>
+          <svg viewBox="-8 -8 16 16" width="12" height="12" aria-hidden="true"><g transform="rotate({{s.angle}})"><path d="M-5 0 H5 M2 -3 L5 0 L2 3" fill="none" stroke="{{s.color}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></g></svg>
+        </span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; text-align: left">{{s.score}}</span>
+      </button>
+    </sc-for>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #171B20; border: 1px solid #2A3038; border-radius: 10px">
+      <div style="font-size: 11px; color: #9AA4AE; text-transform: uppercase; letter-spacing: 0.06em">Group center</div>
+      <div style="font-size: 14px; font-weight: 500">0.3 mm right · 0.7 mm low</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #171B20; border: 1px solid #2A3038; border-radius: 10px">
+      <div style="font-size: 11px; color: #9AA4AE; text-transform: uppercase; letter-spacing: 0.06em">Group size</div>
+      <div style="font-size: 14px; font-weight: 500">31.4 mm c-c</div>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; background: #171B20; border: 1px solid #2A3038; border-radius: 12px">
+    <div style="flex-grow: 1; font-size: 14px; font-weight: 500">Shot {{selN}} · <span style="font-family: 'IBM Plex Mono', monospace">{{selScore}}</span></div>
+    <button style="height: 44px; padding: 0 14px; border-radius: 9px; border: 1px solid #3A424C; background: #1E2329; color: #E9EDF1; font-size: 14px; font-weight: 500">Move</button>
+    <button style="height: 44px; padding: 0 14px; border-radius: 9px; border: 1px solid #3A424C; background: #1E2329; color: #E9EDF1; font-size: 14px; font-weight: 500">Delete</button>
+    <button style="height: 44px; padding: 0 14px; border-radius: 9px; border: 0; background: #F5A524; color: #1A1206; font-size: 14px; font-weight: 600">Add / Miss</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { view: 'plot', selected: 10 };
+  }
+  renderVals() {
+    const R = [77.75, 69.75, 61.75, 53.75, 45.75, 37.75, 29.75, 21.75, 13.75, 5.75];
+    const cam = this.state.view === 'camera';
+    const rings = R.map((r, i) => ({ r: r, stroke: i >= 6 ? '#E6E6E6' : (cam ? '#3A3833' : '#2B2B2B') }));
+    const labels = [];
+    for (let n = 1; n <= 8; n++) {
+      const mid = (R[n - 1] + R[n]) / 2;
+      const fill = n >= 7 ? '#E6E6E6' : (cam ? '#3A3833' : '#2B2B2B');
+      labels.push({ x: mid, y: 0, t: String(n), fill: fill });
+      labels.push({ x: -mid, y: 0, t: String(n), fill: fill });
+      labels.push({ x: 0, y: -mid, t: String(n), fill: fill });
+      labels.push({ x: 0, y: mid, t: String(n), fill: fill });
+    }
+    const pts = [[3,-4],[-9,6],[2,11],[-4,-2],[14,3],[-2,8],[7,-10],[-15,-9],[1,-1],[6,5]];
+    const scores = ['10.4','9.6','9.6','10.5','9.2','9.9','9.4','8.8','10.9','10.0'];
+    const sel = this.state.selected;
+    const shots = pts.map((p, i) => {
+      const n = i + 1;
+      const isLast = n === pts.length;
+      const isSel = n === sel;
+      return {
+        n: n, x: p[0], y: p[1], score: scores[i],
+        angle: Math.round(Math.atan2(p[1], p[0]) * 180 / Math.PI),
+        color: isLast ? '#F5A524' : '#5AA9FF',
+        chipBg: isSel ? '#2A2113' : '#171B20',
+        chipBorder: isSel ? '#F5A524' : '#2A3038',
+        select: () => this.setState({ selected: n })
+      };
+    });
+    const s = shots[sel - 1];
+    return {
+      rings: rings, labels: labels, shots: shots,
+      selectedRing: s ? [{ x: s.x, y: s.y }] : [],
+      selN: s ? s.n : '–', selScore: s ? s.score : '–',
+      isCam: cam, isPlot: !cam,
+      paper: cam ? '#C9C4B8' : '#F3EFE6', black: cam ? '#262626' : '#16191C',
+      frameBg: cam ? '#5B5850' : '#171B20',
+      plotPressed: cam ? 'false' : 'true', camPressed: cam ? 'true' : 'false',
+      plotBg: cam ? 'transparent' : '#2E353D', plotFg: cam ? '#9AA4AE' : '#E9EDF1',
+      camBg: cam ? '#2E353D' : 'transparent', camFg: cam ? '#E9EDF1' : '#9AA4AE',
+      showPlot: () => this.setState({ view: 'plot' }),
+      showCam: () => this.setState({ view: 'camera' })
+    };
+  }
+}
+</script>
+</body>
+</html>
