@@ -41,6 +41,7 @@ OFFSET_WINDOW_MM = 2.0  # search half-width when measuring where printed rings r
 OFFSET_SMOOTH_HALF = 30  # running-median half window, in angle samples (+-60 deg: wider than any hole)
 OFFSET_OUTLIER_MM = 0.4  # samples further than this from the running median are dropped
 OFFSET_MIN_SAMPLES = 10
+OFFSET_MAX_MM = 1.5  # a smoothed offset beyond this is not a ring (obstruction, card edge): ignore it
 
 
 @dataclass
@@ -348,6 +349,7 @@ def _robust_smooth_circular(x: np.ndarray, half: int, outlier: float) -> np.ndar
         ok_rows = count >= OFFSET_MIN_SAMPLES
         if ok_rows.any():
             med[ok_rows] = np.nanmedian(win[ok_rows], axis=1)
+    med[np.abs(med) > OFFSET_MAX_MM] = np.nan
     if np.isnan(med).all():
         return np.zeros(n)
     if np.isnan(med).any():

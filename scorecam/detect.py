@@ -25,7 +25,7 @@ from .target import Target
 BG_DISC_MM = 5.5  # local background disc: > hole diameter, < ring band width
 EDGE_BAND_MM = 0.5  # ignore this band either side of a black/white edge (alignment)
 DARK_FRAC = 0.09  # hole must be this fraction darker than local paper
-BRIGHT_FRAC = 0.09  # rim must be this fraction (of paper level) brighter than local ink
+BRIGHT_FRAC = 0.20  # rim must be this fraction (of paper level) brighter than local ink (halo of dented paper is ~0.1-0.18)
 WARM_SHIFT = 12.0  # Lab (a+b) shift from the zone's own tint
 FILL_MAX_MM2 = 12.0  # enclosed gaps smaller than this are filled
 OPEN_DISC_MM = 3.2  # opening disc: kills numerals/lines, keeps holes
@@ -39,14 +39,15 @@ PAPER_LEVEL_FRAC_WHITE = 0.92  # "paper level" in white zones, relative to local
 PAPER_LEVEL_FRAC_BLACK = 0.80  # white numeral strokes in the black blur a little darker
 NUMERAL_RADIUS_MM = 3.5  # a candidate centred within this of a printed numeral is suspect
 NUMERAL_PATCH_MM = 7.5  # patch around a numeral compared with its siblings at other angles
-NUMERAL_ALIGN_MM = 1.0  # sibling patches may be shifted this much when registering them
+NUMERAL_ALIGN_MM = 0.5  # sibling patches may be shifted this much when registering them
 WARM_EDGE_GRAD = 18.0  # grey levels per px: warm cue is ignored near stronger edges (colour fringing)
 WARM_EDGE_GROW_MM = 0.3
 NUMERAL_STROKE_GROW_MM = 0.35  # grow the stroke template before subtracting it from a blob
 MIN_NUMERAL_EXTRA_MM2 = 5.0  # blob area beyond the printed strokes needed to call it a hole
 NUMERAL_EXTRA_OPEN_MM = 2.4  # opening applied to that extra area (drops edge slivers, keeps a hole core)
 INK_LEVEL_FRAC = 0.55  # "ink level" in white zones: darker than this fraction of local paper
-LINE_BAND_MM = 0.4  # half-width of the band blanked around each thin printed ring line
+LINE_BAND_MM = 0.6  # half-width of the band blanked around each thin printed ring line
+ZONES_FOLLOW_RINGS = False  # place zone edges at measured ring positions (worse on obstructed cards)
 MAX_SINGLE_LENGTH_MM = 6.5  # a blob longer than this AND elongated holds more than one pellet
 MAX_SINGLE_ASPECT = 1.4  # length / width above which a long blob is an overlap group
 CARD_EDGE_MARGIN_MM = 2.5
@@ -82,22 +83,37 @@ def _disc(diameter_mm: float, px_per_mm: float) -> np.ndarray:
     return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (d, d))
 
 
-def zone_masks(shape: tuple, px_per_mm: float, T: np.ndarray, target: Target):
-    """(white_zone, black_zone) boolean masks from the target model, with a band
-    around every black/white edge excluded from both."""
-    h, w = shape[:2]
-    yy, xx = np.indices((h, w), dtype=np.float32)
-    cx, cy = T[0, 2], T[1, 2]
-    r = np.hypot(xx - cx, yy - cy) / px_per_mm
-    radii = np.array([ring.radius_mm for ring in target.rings])
-    colors = [ring.color for ring in target.rings] + [target.outer_color]
-    idx = np.searchsorted(radii, r)
-    is_black = np.array([c == "black" for c in colors])[idx]
-    edge = np.zeros((h, w), bool)
-    for b in target.boundaries():
+def zone_masks(shape: tuple, px_per_mm: float, T: np.ndarray, target: Target, cal: Calibration | None = None):
+    """(white_zone, black_zone) boolean masks from the target model, with every
+    black/white edge placed where it was measured on this card and a band around
+    it excluded from both zones."""
+    r, theta = polar_maps(shape, px_per_mm, T)
+    is_black = np.zeros(r.shape, bool)
+    edge = np.zeros(r.shape, bool)
+    inner_r = np.zeros(r.shape, np.float32)
+    for ring, b in zip(target.rings, target.boundaries()):
+        outer_r = local_ring_radius(b.radius_mm, theta, cal)
+        if ring.color == "black":
+            is_black |= (r >= inner_r) & (r < outer_r)
         if b.kind.startswith("edge"):
-            edge |= np.abs(r - b.radius_mm) < EDGE_BAND_MM
+            edge |= np.abs(r - outer_r) < EDGE_BAND_MM
+        inner_r = outer_r
+    if target.outer_color == "black":
+        is_black |= r >= inner_r
     return (~is_black) & ~edge, is_black & ~edge
+
+
+def local_ring_radius(radius_mm: float, theta: np.ndarray, cal: Calibration | None) -> np.ndarray:
+    """Radius of the printed ring that the model puts at radius_mm, per pixel angle."""
+    if cal is None or cal.ring_offsets_smooth is None:
+        return np.full(theta.shape, radius_mm, np.float32)
+    k = int(np.argmin(np.abs(cal.ring_radii_mm - radius_mm)))
+    off = cal.ring_offsets_smooth[k]
+    n = len(off)
+    a = (theta % (2 * np.pi)) / (2 * np.pi) * n
+    i0 = np.floor(a).astype(int) % n
+    fa = a - np.floor(a)
+    return (radius_mm + off[i0] * (1 - fa) + off[(i0 + 1) % n] * fa).astype(np.float32)
 
 
 def find_card_mask(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Target,
@@ -183,19 +199,8 @@ def thin_line_band(r: np.ndarray, theta: np.ndarray, target: Target, cal: Calibr
     """Pixels within LINE_BAND_MM of a thin printed ring line, at its measured position."""
     band = np.zeros(r.shape, bool)
     for b in target.boundaries():
-        if not b.kind.endswith("line"):
-            continue
-        if cal is not None and cal.ring_offsets_smooth is not None:
-            k = int(np.argmin(np.abs(cal.ring_radii_mm - b.radius_mm)))
-            off = cal.ring_offsets_smooth[k]
-            n = len(off)
-            a = (theta % (2 * np.pi)) / (2 * np.pi) * n
-            i0 = np.floor(a).astype(int) % n
-            fa = a - np.floor(a)
-            r_line = b.radius_mm + off[i0] * (1 - fa) + off[(i0 + 1) % n] * fa
-        else:
-            r_line = b.radius_mm
-        band |= np.abs(r - r_line) < LINE_BAND_MM
+        if b.kind.endswith("line"):
+            band |= np.abs(r - local_ring_radius(b.radius_mm, theta, cal)) < LINE_BAND_MM
     return band
 
 
@@ -283,8 +288,8 @@ def cue_maps(bgr: np.ndarray, px_per_mm: float, white_zone: np.ndarray, black_zo
     warm &= cv2.dilate(strong, _disc(2 * WARM_EDGE_GROW_MM, px_per_mm)) == 0
     at_paper = (g > PAPER_LEVEL_FRAC_WHITE * paper) & white_zone
     at_paper |= (g > PAPER_LEVEL_FRAC_BLACK * paper_level) & black_zone
-    # printed marks: ink strokes on white, white strokes in the black
-    printed = ((g < INK_LEVEL_FRAC * paper) & white_zone) | (at_paper & black_zone)
+    # printed marks (numeral strokes): ink level on white, the bright cue in the black
+    printed = ((g < INK_LEVEL_FRAC * paper) & white_zone) | (bright & black_zone)
     return dark, bright, warm, at_paper, printed, paper_level
 
 
@@ -307,7 +312,7 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
                  cal: Calibration | None = None, pellet_mm: float = 4.5,
                  ) -> tuple[list[Hole], DetectionDebug]:
     card, theta_card = find_card_mask(bgr, px_per_mm, T, target)
-    white_zone, black_zone = zone_masks(bgr.shape, px_per_mm, T, target)
+    white_zone, black_zone = zone_masks(bgr.shape, px_per_mm, T, target, cal if ZONES_FOLLOW_RINGS else None)
     white_zone &= card > 0
     black_zone &= card > 0
     dark, bright, warm, at_paper, printed, paper_level = cue_maps(bgr, px_per_mm, white_zone, black_zone)

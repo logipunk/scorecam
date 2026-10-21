@@ -60,11 +60,13 @@ def process_image(path: str | Path, target: Target, pellet_mm: float = 4.5) -> C
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     cal = calibrate(gray, target)
     rect, T = rectify(bgr, cal, target, PX_PER_MM)
-    holes, dbg = detect_holes(rect, PX_PER_MM, T, target, cal, pellet_mm)
     T_inv = np.linalg.inv(T)
-    positions = [T_inv @ np.array([h.x_mm, h.y_mm, 1.0]) for h in holes]
-    # the holes themselves disturb the ring measurement: measure again without them
-    update_ring_offsets(cal, gray, target, [(p[0], p[1], h.diameter_mm / 2) for p, h in zip(positions, holes)])
+    # two passes: the holes themselves disturb the ring measurement that the
+    # detector relies on, so measure the rings again without them and detect again
+    for _ in range(2):
+        holes, dbg = detect_holes(rect, PX_PER_MM, T, target, cal, pellet_mm)
+        positions = [T_inv @ np.array([h.x_mm, h.y_mm, 1.0]) for h in holes]
+        update_ring_offsets(cal, gray, target, [(p[0], p[1], h.diameter_mm / 2) for p, h in zip(positions, holes)])
     shots = []
     for h, (x, y, _) in zip(holes, positions):
         r = float(np.hypot(x, y))
