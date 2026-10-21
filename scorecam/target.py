@@ -33,6 +33,8 @@ class Target:
     rings: tuple[Ring, ...]  # ordered from the centre outward (highest value first)
     outer_color: str
     inner_ring_radius_mm: float | None
+    numeral_angles_deg: tuple[float, ...] = ()  # where ring numerals are printed (0 = right, 90 = down)
+    numeral_rings: tuple[int, ...] = ()  # ring values that carry a printed numeral
 
     @property
     def outer_radius_mm(self) -> float:
@@ -88,4 +90,6 @@ def load_target(name_or_path: str | Path) -> Target:
         rings=rings,
         outer_color=d.get("outer_color", "white"),
         inner_ring_radius_mm=d.get("inner_ring_radius_mm"),
+        numeral_angles_deg=tuple(float(a) for a in d.get("numeral_angles_deg", [])),
+        numeral_rings=tuple(int(v) for v in d.get("numeral_rings", [])),
     )

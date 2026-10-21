@@ -17,4 +17,8 @@ rings:
   - {value: 2,  radius_mm: 69.75, color: white}
   - {value: 1,  radius_mm: 77.75, color: white}
 outer_color: white
+# Printed ring numerals: in the middle of each listed ring band, at these angles
+# (degrees, 0 = right / 3 o'clock, 90 = down / 6 o'clock). Used to filter false holes.
+numeral_angles_deg: [0, 90, 180, 270]
+numeral_rings: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 inner_ring_radius_mm: 2.5

@@ -11,7 +11,7 @@ ISSF = load_target("issf_10m_air_pistol")
 
 def test_target_loads_sorted_rings():
     assert [r.value for r in GAMO.rings] == list(range(10, 0, -1))
-    assert GAMO.black_radii_mm == (13.0, 33.1)
+    assert GAMO.black_radii_mm == (12.95, 33.15)
     assert GAMO.color_at(20.0) == "black"
     assert GAMO.color_at(5.0) == "white"
     assert GAMO.color_at(100.0) == "white"
@@ -35,7 +35,7 @@ def test_centre_shot_is_ten():
 
 
 def test_edge_rule_scores_higher_ring():
-    r10 = GAMO.rings[0].radius_mm  # 6.45
+    r10 = GAMO.rings[0].radius_mm  # 6.35
     # centre just outside the 10 ring but the hole edge still touches it -> 10
     assert ring_value(r10 + 2.25 - 0.01, GAMO, 4.5) == 10
     # hole edge clear of the line -> 9
@@ -56,7 +56,7 @@ def test_decimal_issf_values():
 
 
 def test_caliber_setting_changes_edge_rule():
-    d = 6.45 + 2.5  # a 5.5 mm pellet still touches the 10 ring, a 4.5 mm one does not
+    d = GAMO.rings[0].radius_mm + 2.5  # a 5.5 mm pellet still touches the 10 ring, a 4.5 mm one does not
     assert ring_value(d, GAMO, 5.5) == 10
     assert ring_value(d, GAMO, 4.5) == 9
 

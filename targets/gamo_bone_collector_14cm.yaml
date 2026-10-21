@@ -1,8 +1,9 @@
 # Gamo "Bone Collector" 14x14 cm paper card (10 rings, unnumbered inner circle = 10).
 #
-# Ring radii were MEASURED from test-cards/focus3-13.jpg (card rectified by its
-# corners, 140 mm square), not taken from a manufacturer spec. Expect ~1 % scale
-# error; verify with calipers. See scripts/measure_target.py.
+# Ring radii were MEASURED, not taken from a manufacturer spec: absolute scale from
+# test-cards/focus3-13.jpg rectified by its corners (140 mm square), relative radii
+# refined over all test cards with scripts/measure_target.py. Expect ~1 % scale
+# error; verify with calipers.
 #
 # `radius_mm` is the OUTER radius of the scoring zone with that value.
 # `color` is the printed background of that zone (used to find ring edges).
@@ -12,17 +13,21 @@ card_mm: [140, 140]
 # Offset of the ring centre from the card centre (x right, y down), mm.
 center_offset_mm: [0, 0]
 rings:
-  - {value: 10, radius_mm: 6.45, color: white}
-  - {value: 9,  radius_mm: 13.0, color: white}
-  - {value: 8,  radius_mm: 19.8, color: black}
-  - {value: 7,  radius_mm: 26.8, color: black}
-  - {value: 6,  radius_mm: 33.1, color: black}
+  - {value: 10, radius_mm: 6.35, color: white}
+  - {value: 9,  radius_mm: 12.95, color: white}
+  - {value: 8,  radius_mm: 19.65, color: black}
+  - {value: 7,  radius_mm: 26.65, color: black}
+  - {value: 6,  radius_mm: 33.15, color: black}
   - {value: 5,  radius_mm: 40.2, color: white}
-  - {value: 4,  radius_mm: 47.0, color: white}
-  - {value: 3,  radius_mm: 53.5, color: white}
-  - {value: 2,  radius_mm: 60.0, color: white}
+  - {value: 4,  radius_mm: 47.35, color: white}
+  - {value: 3,  radius_mm: 53.45, color: white}
+  - {value: 2,  radius_mm: 60.05, color: white}
   - {value: 1,  radius_mm: 66.9, color: white}
 # Background outside the last ring.
 outer_color: white
 # Optional inner-ten / X ring (outer radius, mm). null = none.
+# Printed ring numerals: in the middle of each listed ring band, at these angles
+# (degrees, 0 = right / 3 o'clock, 90 = down / 6 o'clock). Used to filter false holes.
+numeral_angles_deg: [0, 90, 180, 270]
+numeral_rings: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 inner_ring_radius_mm: null
