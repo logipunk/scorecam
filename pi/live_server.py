@@ -64,6 +64,7 @@ td.s{font-weight:bold;font-size:22px}
 <img id=tgt src="/target.jpg" alt="" style="display:none">
 <div class=bar><button id=z onclick="go('/zoom')">Zoom OFF</button>
 <button onclick="go('/capture')">Capture</button>
+<button onclick="go('/rescan')">Rescan</button>
 <button onclick="startSession()">New session</button></div>
 <div id=state>starting</div><div id=focus></div>
 <div id=total></div>
@@ -251,6 +252,14 @@ class Service:
                 self.render_target(ev)
 
     # ---- misc
+    def rescan(self) -> str:
+        """Analyse the next still frame again, keeping the known holes (new ones are reported)."""
+        if self.scorer is not None:
+            self.scorer.analysed_still = False
+            self.scorer.still_count = 0
+            self.state = "rescan requested"
+        return "rescan"
+
     def toggle_zoom(self) -> str:
         self.zoomed = not self.zoomed
         return "zoom 1:1 centre" if self.zoomed else "zoom full frame"
@@ -310,6 +319,8 @@ class Handler(server.BaseHTTPRequestHandler):
                 self.send_error(404)
             else:
                 self._send(service.target_jpeg, "image/jpeg")
+        elif u.path == "/rescan":
+            self._send(service.rescan(), "text/plain")
         elif u.path == "/zoom":
             self._send(service.toggle_zoom(), "text/plain")
         elif u.path == "/capture":
