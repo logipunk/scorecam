@@ -38,3 +38,18 @@ On the Pi it is installed as the systemd service `scorecam-preview.service`
 (`/etc/systemd/system/scorecam-preview.service`, runs `~/preview_server.py`), so
 it starts on boot. Headless VNC needs `video=HDMI-A-1:1280x720@60D` at the end of
 `/boot/firmware/cmdline.txt`.
+
+## Live mode
+
+`scorecam/live.py` turns a stream of frames into shot events: the picture is
+watched for motion; when it has been still for a few frames, one full-resolution
+frame is analysed and the holes that were not there before are reported as new
+shots (`scripts/live_replay.py FRAMES... --target nra_b3 --caliber 5.6` replays
+recorded frames; add `--repeat 3` when feeding single stills). Each face-on
+period of a turning target is a series; a target with no rings in view is
+"lost", and a fresh sheet (most known holes gone) re-locks. Sessions are written
+as `sessions/<id>/session.json` + `events.jsonl` + `frames/`.
+
+On the Pi, `pi/live_server.py` runs the camera, the scorer and the phone page
+(`http://scorecam.local:8000/`: live view, zoom, capture, new session, shot list).
+Analysis of one frame takes ~14 s on a Pi 4 (ring area only, 10 px/mm).
