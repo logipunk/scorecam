@@ -53,3 +53,7 @@ as `sessions/<id>/session.json` + `events.jsonl` + `frames/`.
 On the Pi, `pi/live_server.py` runs the camera, the scorer and the phone page
 (`http://scorecam.local:8000/`: live view, zoom, capture, new session, shot list).
 Analysis of one frame takes ~14 s on a Pi 4 (ring area only, 10 px/mm).
+
+## License
+
+MIT, see LICENSE.

@@ -71,4 +71,4 @@ Target definitions are data files (rings, zones, X-ring) so new targets can be a
 - Keep it simple and testable. Scripts must run headless.
 - Every detection change gets checked against ground_truth.yaml; report accuracy per card.
 - Don't add dependencies that won't install on a Pi 4.
-- Open source (license TBD: MIT vs GPL).
+- Open source, MIT licensed (LICENSE).
