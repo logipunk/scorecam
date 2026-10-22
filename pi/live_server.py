@@ -74,7 +74,7 @@ function go(u){fetch(u).then(r=>r.text()).then(t=>{if(/zoom/.test(t)){var z=docu
 function startSession(){var n=prompt('Shooter name (optional)','')||'';fetch('/session/start?shooter='+encodeURIComponent(n)).then(poll)}
 var stamp=0;
 function poll(){fetch('/status').then(r=>r.json()).then(s=>{
-  if(s.stamp&&s.stamp!=stamp){stamp=s.stamp;var im=document.getElementById('tgt');im.src='/target.jpg?'+stamp;im.style.display='block'}
+  if(s.stamp!=stamp){stamp=s.stamp;var im=document.getElementById('tgt');if(stamp){im.src='/target.jpg?'+stamp;im.style.display='block'}else{im.style.display='none'}}
   document.getElementById('state').textContent=s.state+(s.series?'  series '+s.series:'')+(s.busy?'  analysing...':'');
   document.getElementById('focus').textContent='focus '+s.focus+'   '+s.target+' '+s.caliber+' mm   session '+s.session;
   var tb=document.getElementById('shots');tb.innerHTML='';var tot=0,x=0;
@@ -253,12 +253,12 @@ class Service:
 
     # ---- misc
     def rescan(self) -> str:
-        """Analyse the next still frame again, keeping the known holes (new ones are reported)."""
-        if self.scorer is not None:
-            self.scorer.analysed_still = False
-            self.scorer.still_count = 0
-            self.state = "rescan requested"
-        return "rescan"
+        """Start over: a fresh session with nothing known, so the next still frame is
+        analysed from scratch and everything on the paper counts as already there."""
+        sid = self.start_session(self.target_name, self.caliber, "")
+        self.target_jpeg, self.stamp = None, 0
+        self.state = "fresh start, waiting for a still picture"
+        return f"rescan: new session {sid}"
 
     def toggle_zoom(self) -> str:
         self.zoomed = not self.zoomed
