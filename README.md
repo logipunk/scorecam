@@ -25,3 +25,11 @@ polynomial correction for bowed cards), rectify to 0.1 mm/px, detect holes from
 lighting-relative cues, score by hole-edge distance against the printed rings as
 measured on that card. Holes on numerals or in overlap groups are flagged for
 manual review rather than silently decided.
+
+## Phone viewfinder on the Pi
+
+`pi/preview_server.py` runs on the Pi (Picamera2, no extra packages) and serves a
+live MJPEG preview at `http://scorecam.local:8000/`. Open it on a phone at the
+tripod: **Zoom** switches to a 1:1 centre crop for focusing, **Capture** saves a
+full-resolution JPEG to `~/captures/` on the Pi and prints a sharpness figure for
+the frame centre. Copy captures to the dev machine with `scp`.
