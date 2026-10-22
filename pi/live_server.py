@@ -104,7 +104,8 @@ class Service:
         cfg = self.cam.create_video_configuration(
             main={"size": self.full, "format": "RGB888"},
             lores={"size": LORES, "format": "YUV420"},
-            raw={"size": (self.full[0] // 2, self.full[1] // 2)},  # full field of view, binned
+            raw={"size": self.full},  # full-resolution readout: the analysed frame needs every pixel
+            controls={"FrameDurationLimits": (200000, 200000)},  # 5 fps: a still target needs no more
             buffer_count=3)
         self.cam.configure(cfg)
         self.cam.start()
