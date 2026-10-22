@@ -6,10 +6,10 @@
 target: {name: nra_b2, pellet_mm: 5.6}
 capture: {camera: rpi_hq_imx477, lens: canon_efs_55_250_is, distance_m: 9}
 cards:
-- file: 20261022_114115.jpg
+- file: 20261022_132336.jpg
   sheet: 1
-  notes: 'first test capture, lens at wide end: sheet only ~1300 px wide (0.22 mm/px)'
-  holes:
+  notes: 'second batch: lens zoomed in, sheet fills the frame, still on the cream wall, no backer'
+  holes: &id001
   - {score: 10, seen: '10-9 edge, 12 o''clock'}
   - {score: 9}
   - {score: 9, seen: 9-8 edge}
@@ -20,23 +20,13 @@ cards:
   - {score: 8}
   - {score: 8, seen: 7-8 edge}
   - {score: 7}
-- file: 20261022_122753.jpg
+- file: 20261022_132339.jpg
   sheet: 1
-  notes: second capture of sheet 1, 0.17 mm/px
-  holes:
-  - {score: 10, seen: '10-9 edge, 12 o''clock'}
-  - {score: 9}
-  - {score: 9, seen: 9-8 edge}
-  - {score: 8}
-  - {score: 7}
-  - {score: 8, seen: 7-8 edge}
-  - {score: 9}
-  - {score: 8}
-  - {score: 8, seen: 7-8 edge}
-  - {score: 7}
-- file: 20261022_122907.jpg
+  notes: 'second batch: lens zoomed in, sheet fills the frame, still on the cream wall, no backer'
+  holes: *id001
+- file: 20261022_132405.jpg
   sheet: 2
-  notes: lens at wide end, 0.17 mm/px
+  notes: 'second batch: lens zoomed in, sheet fills the frame, still on the cream wall, no backer'
   holes:
   - {score: 10, seen: 9-10 edge}
   - {score: 9, seen: 8-9 edge}
@@ -48,3 +38,7 @@ cards:
   - {score: 6}
   - {score: 4}
   - {score: 4}
+cards_wide_angle:
+- {file: 20261022_114115.jpg, sheet: 1, notes: 'first test capture, lens at wide end: sheet only ~1300 px wide (0.22 mm/px)'}
+- {file: 20261022_122753.jpg, sheet: 1, notes: 'second capture of sheet 1, 0.17 mm/px'}
+- {file: 20261022_122907.jpg, sheet: 2, notes: 'lens at wide end, 0.17 mm/px'}
