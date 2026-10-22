@@ -70,6 +70,7 @@ class Hole:
     paper_frac: float = 0.0  # fraction of blob pixels at printed-paper level
     warm_frac: float = 0.0  # fraction of blob pixels with torn-paper colour
     solidity: float = 1.0
+    group: int = -1  # blob index: the holes of one overlap group share it
 
 
 @dataclass
@@ -452,7 +453,7 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
     single_area = np.pi * (pellet_mm / 2) ** 2
     holes, rejected = [], []
     cnts, _ = cv2.findContours(cands, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    for c in cnts:
+    for gi, c in enumerate(cnts):
         blob = np.zeros(cands.shape, np.uint8)
         cv2.drawContours(blob, [c], -1, 1, -1)
         shape = _blob_shape(c, px_per_mm)
@@ -501,7 +502,7 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
             # longer than one pellet: an overlap group (best effort split, flagged)
             for (hx, hy) in split_overlap(c, n_est, pellet_mm, px_per_mm):
                 holes.append(Hole(hx, hy, pellet_mm, shape["roundness"], shape["area"],
-                                  flags=flags + ["overlap"], n_est=n_est, **common))
+                                  flags=flags + ["overlap"], n_est=n_est, group=gi, **common))
         else:
             rejected.append({**info, "why": f"too big (d={shape['diameter']:.1f})"})
     return holes, DetectionDebug(dark, bright, warm, cands, card, strokes, rejected)
