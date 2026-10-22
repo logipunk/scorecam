@@ -33,14 +33,19 @@ PAGE = """<!doctype html><html><head><meta name=viewport content="width=device-w
 <style>body{margin:0;background:#111;color:#eee;font:16px sans-serif}
 img{width:100%;display:block}
 .bar{display:flex;gap:8px;padding:8px}
-button{flex:1;padding:14px;font-size:18px}
-#msg{padding:0 8px 8px;min-height:1.4em}</style></head><body>
+button{flex:1;padding:16px;font-size:20px;border:0;border-radius:6px;background:#444;color:#eee}
+button.on{background:#c80;color:#000;font-weight:bold}
+#msg{padding:0 8px 8px;min-height:1.4em;font-size:18px}</style></head><body>
 <img src="/stream.mjpg">
-<div class=bar><button onclick="go('/zoom')">Zoom</button>
+<div class=bar><button id=z onclick="go('/zoom')">Zoom OFF (full frame)</button>
 <button onclick="go('/capture')">Capture</button></div>
 <div id=msg></div>
 <script>
-function go(u){fetch(u).then(r=>r.text()).then(t=>document.getElementById('msg').textContent=t)}
+function show(t){document.getElementById('msg').textContent=t;
+  var z=document.getElementById('z'), on=/ON/.test(t)||/1:1/.test(t);
+  if(/zoom/i.test(t)){z.textContent=on?'Zoom ON (1:1 centre)':'Zoom OFF (full frame)';z.className=on?'on':'';}}
+function go(u){fetch(u).then(r=>r.text()).then(show)}
+fetch('/status').then(r=>r.text()).then(show);
 </script></body></html>"""
 
 
@@ -132,6 +137,8 @@ class Handler(server.BaseHTTPRequestHandler):
             self._text(PAGE)
         elif path == "/zoom":
             self._text(camera.toggle_zoom(), "text/plain")
+        elif path == "/status":
+            self._text("zoom 1:1 centre" if camera.zoomed else "zoom full frame", "text/plain")
         elif path == "/capture":
             self._text(camera.capture(), "text/plain")
         elif path == "/stream.mjpg":
