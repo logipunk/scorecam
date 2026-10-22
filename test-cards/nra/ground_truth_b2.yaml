@@ -1,7 +1,7 @@
 # Ground truth for NRA B-2 sheets photographed with the Pi HQ camera (test-cards/nra/).
 # Hand scores per hole as given by the shooter (not in clock order). 0 = flier/miss outside the rings.
 # Sheet numbers are the handwritten "#n" on the paper.
-# Sheet 1 was first reported as 8 holes (8,10,9,9,8,7,9,8); the later careful read gives 10 holes with no 10.
+# Sheet 1: the 12 o'clock hole was first listed as a 9; the shooter corrected it to a 10 (10-9 edge).
 
 target: {name: nra_b2, pellet_mm: 5.6}
 capture: {camera: rpi_hq_imx477, lens: canon_efs_55_250_is, distance_m: 9}
@@ -10,7 +10,7 @@ cards:
   sheet: 1
   notes: 'first test capture, lens at wide end: sheet only ~1300 px wide (0.22 mm/px)'
   holes:
-  - {score: 9}
+  - {score: 10, seen: '10-9 edge, 12 o''clock'}
   - {score: 9}
   - {score: 9, seen: 9-8 edge}
   - {score: 8}
@@ -24,7 +24,7 @@ cards:
   sheet: 1
   notes: second capture of sheet 1, 0.17 mm/px
   holes:
-  - {score: 9}
+  - {score: 10, seen: '10-9 edge, 12 o''clock'}
   - {score: 9}
   - {score: 9, seen: 9-8 edge}
   - {score: 8}
