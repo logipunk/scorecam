@@ -60,12 +60,16 @@ def process_image(path: str | Path, target: Target, pellet_mm: float = 4.5) -> C
     return process_frame(bgr, target, pellet_mm, path)
 
 
+ROI_MARGIN_MM = 15.0  # live mode works on the rings plus this margin, not the whole card
+
+
 def process_frame(bgr: np.ndarray, target: Target, pellet_mm: float = 4.5,
-                  path: Path | None = None) -> CardResult:
-    """The still pipeline on an in-memory BGR frame (live mode feeds frames here)."""
+                  path: Path | None = None, roi: bool = False) -> CardResult:
+    """The still pipeline on an in-memory BGR frame (live mode feeds frames here).
+    roi=True restricts the work to the scoring rings plus ROI_MARGIN_MM."""
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     cal = calibrate(gray, target)
-    rect, T = rectify(bgr, cal, target, PX_PER_MM)
+    rect, T = rectify(bgr, cal, target, PX_PER_MM, roi_mm=ROI_MARGIN_MM if roi else None)
     T_inv = np.linalg.inv(T)
     # two passes: the holes themselves disturb the ring measurement that the
     # detector relies on, so measure the rings again without them and detect again

@@ -53,7 +53,7 @@ def test_turning_target_strings(tmp_path):
 
 def test_fixed_target_one_shot_at_a_time(tmp_path):
     target = load_target("issf_10m_air_pistol")
-    holes = [(1.0, -1.0), (0.0, 14.0), (-30.0, 0.0)]
+    holes = [(1.0, -1.0), (0.0, 14.0), (-30.0, 6.0)]
     frames = [frame(target, [], tmp_path, 4.5)] * 4
     for n in range(1, len(holes) + 1):  # the first changed frame counts as motion, then 3 still ones
         frames += [frame(target, holes[:n], tmp_path, 4.5)] * 4

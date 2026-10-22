@@ -23,6 +23,7 @@ from .target import Target
 
 # One parameter set for all images (all sizes in mm).
 BG_DISC_MM = 5.5  # local background disc: > hole diameter, < ring band width
+BG_SCALE = 2  # the background levels are computed at 1/BG_SCALE resolution (max/min pooled)
 EDGE_BAND_MM = 0.5  # ignore this band either side of a black/white edge (alignment)
 DARK_FRAC = 0.09  # hole must be this fraction darker than local paper
 BRIGHT_FRAC = 0.20  # rim must be this fraction (of paper level) brighter than local ink (halo of dented paper is ~0.1-0.18)
@@ -52,6 +53,7 @@ BRIDGE_MM = 1.4  # closing that rejoins a solid hole cut by a blanked line band
 ZONES_FOLLOW_RINGS = False  # place zone edges at measured ring positions (worse on obstructed cards)
 MAX_SINGLE_LENGTH_FACTOR = 1.45  # a blob longer than this x the pellet AND elongated holds more than one
 MAX_SINGLE_ASPECT = 1.4  # length / width above which a long blob is an overlap group
+CARD_SCALE = 2  # the card outline is found at 1/CARD_SCALE resolution
 CARD_EDGE_MARGIN_MM = 2.5
 
 
@@ -100,11 +102,12 @@ def zone_masks(shape: tuple, px_per_mm: float, T: np.ndarray, target: Target, ca
             is_black |= (r >= inner_r) & (r < outer_r)
         if b.kind.startswith("edge"):
             if cal is not None and cal.ring_offsets_smooth is not None:
-                near = np.abs(r - outer_r) < EDGE_BAND_MM + float(np.abs(cal.ring_offsets_smooth).max()) + 0.1
-                local = local_ring_radius(outer_r, theta[near], cal)
-                edge[near] = np.abs(r[near] - local) < EDGE_BAND_MM
-                blk = np.zeros(r.shape, bool); blk[near] = r[near] < local
-                is_black[near] = blk[near] if ring.color == "black" else ~blk[near] & is_black[near]
+                idx = annulus_index(r, outer_r, EDGE_BAND_MM + float(np.abs(cal.ring_offsets_smooth).max()) + 0.1)
+                rf, tf = r.ravel(), theta.ravel()
+                local = local_ring_radius(outer_r, tf[idx], cal)
+                edge.ravel()[idx] = np.abs(rf[idx] - local) < EDGE_BAND_MM
+                inside = rf[idx] < local
+                is_black.ravel()[idx] = inside if ring.color == "black" else (~inside & is_black.ravel()[idx])
             else:
                 edge |= np.abs(r - outer_r) < EDGE_BAND_MM
         inner_r = outer_r
@@ -131,7 +134,19 @@ def find_card_mask(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Tar
     """Card area in the rectified image, as a rotated rectangle fitted to the bright
     region around the ring centre, shrunk by a margin so the card edge, and
     anything leaning on it, is never a candidate. Also returns the card's rotation
-    (radians) relative to the rectified axes."""
+    (radians) relative to the rectified axes. Works at 1/CARD_SCALE resolution:
+    the card outline needs no detail."""
+    sc = CARD_SCALE
+    small = cv2.resize(bgr, None, fx=1 / sc, fy=1 / sc, interpolation=cv2.INTER_AREA)
+    Ts = T.copy()
+    Ts[0, 2] /= sc
+    Ts[1, 2] /= sc
+    mask, theta = _find_card_mask_full(small, px_per_mm / sc, Ts, target)
+    return cv2.resize(mask, (bgr.shape[1], bgr.shape[0]), interpolation=cv2.INTER_NEAREST), theta
+
+
+def _find_card_mask_full(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Target,
+                         ) -> tuple[np.ndarray, float]:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (0, 0), 0.3 * px_per_mm)
     t, _ = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -212,28 +227,55 @@ def _card_rotation(card: np.ndarray, px_per_mm: float, centre: tuple, target: Ta
     return float(angs[order][np.searchsorted(cum, cum[-1] / 2)])  # weighted median
 
 
+_polar_cache: dict = {}
+
+
 def polar_maps(shape: tuple, px_per_mm: float, T: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Per-pixel (radius_mm, angle) about the ring centre."""
-    h, w = shape[:2]
-    yy, xx = np.indices((h, w), dtype=np.float32)
-    dx, dy = xx - T[0, 2], yy - T[1, 2]
-    return np.hypot(dx, dy) / px_per_mm, np.arctan2(dy, dx)
+    """Per-pixel (radius_mm, angle) about the ring centre. Cached: in live mode
+    every frame of a target has the same geometry."""
+    key = (shape[0], shape[1], round(float(T[0, 2]), 2), round(float(T[1, 2]), 2), px_per_mm)
+    hit = _polar_cache.get(key)
+    if hit is None:
+        h, w = shape[:2]
+        yy, xx = np.indices((h, w), dtype=np.float32)
+        dx, dy = xx - T[0, 2], yy - T[1, 2]
+        hit = np.hypot(dx, dy) / px_per_mm, np.arctan2(dy, dx)
+        _polar_cache.clear()
+        _polar_cache[key] = hit
+    return hit
+
+
+_annulus_cache: dict = {}
+ANNULUS_QUANT_MM = 0.5
+
+
+def annulus_index(r: np.ndarray, radius_mm: float, half_width_mm: float) -> np.ndarray:
+    """Flat indices of the pixels within half_width_mm of radius_mm (cached per map)."""
+    hw = float(np.ceil(half_width_mm / ANNULUS_QUANT_MM) * ANNULUS_QUANT_MM)  # quantise so that the cache hits
+    key = (id(r), round(radius_mm, 3), hw)
+    hit = _annulus_cache.get(key)
+    if hit is None:
+        if len(_annulus_cache) > 64:
+            _annulus_cache.clear()
+        hit = np.flatnonzero(np.abs(r.ravel() - radius_mm) < hw)
+        _annulus_cache[key] = hit
+    return hit
 
 
 def thin_line_band(r: np.ndarray, theta: np.ndarray, target: Target, cal: Calibration | None) -> np.ndarray:
     """Pixels within LINE_BAND_MM of a thin printed ring line, at its measured
     position. The measured radius is evaluated only inside a narrow annulus
     around each line (the offsets are bounded), which is what makes this cheap."""
-    band = np.zeros(r.shape, bool)
+    band = np.zeros(r.size, bool)
     reach = LINE_BAND_MM + (float(np.abs(cal.ring_offsets_smooth).max()) if cal is not None and cal.ring_offsets_smooth is not None else 0.0)
+    rf, tf = r.ravel(), theta.ravel()
     for b in target.boundaries():
         if not b.kind.endswith("line"):
             continue
-        near = np.abs(r - b.radius_mm) < reach + 0.1
-        local = local_ring_radius(b.radius_mm, theta[near], cal)
-        hit = np.abs(r[near] - local) < LINE_BAND_MM
-        band[near] = hit
-    return band
+        idx = annulus_index(r, b.radius_mm, reach + 0.1)
+        local = local_ring_radius(b.radius_mm, tf[idx], cal)
+        band[idx] = np.abs(rf[idx] - local) < LINE_BAND_MM
+    return band.reshape(r.shape)
 
 
 def numeral_centres(target: Target, theta_card: float, cal: Calibration | None) -> list[tuple[float, float]]:
@@ -318,12 +360,28 @@ def numeral_sibling_strokes(printed: np.ndarray, px_per_mm: float, T: np.ndarray
 
 
 
+def _local_level(gray: np.ndarray, px_per_mm: float, op: int, scale: int | None = None) -> np.ndarray:
+    """Closing (local white level) or opening (local dark level) with the
+    background disc, computed at 1/scale resolution and interpolated back. The
+    reduction pools with max (closing) or min (opening) so the level is not biased
+    by averaging; a 55 px disc on the full image costs ~30x more than 28 px on the
+    half-size one."""
+    scale = BG_SCALE if scale is None else scale
+    if scale == 1:
+        return cv2.morphologyEx(gray, op, _disc(BG_DISC_MM, px_per_mm)).astype(np.float32)
+    h, w = gray.shape
+    hh, ww = h // scale * scale, w // scale * scale
+    blocks = gray[:hh, :ww].reshape(hh // scale, scale, ww // scale, scale)
+    small = blocks.max(axis=(1, 3)) if op == cv2.MORPH_CLOSE else blocks.min(axis=(1, 3))
+    lvl = cv2.morphologyEx(np.ascontiguousarray(small), op, _disc(BG_DISC_MM, px_per_mm / scale))
+    return cv2.resize(lvl, (w, h), interpolation=cv2.INTER_LINEAR).astype(np.float32)
+
+
 def cue_maps(bgr: np.ndarray, px_per_mm: float, white_zone: np.ndarray, black_zone: np.ndarray):
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (0, 0), 0.08 * px_per_mm)
-    se = _disc(BG_DISC_MM, px_per_mm)
-    paper = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, se).astype(np.float32)  # local white level
-    ink = cv2.morphologyEx(gray, cv2.MORPH_OPEN, se).astype(np.float32)  # local dark level
+    paper = _local_level(gray, px_per_mm, cv2.MORPH_CLOSE)  # local white level
+    ink = _local_level(gray, px_per_mm, cv2.MORPH_OPEN)  # local dark level
     g = gray.astype(np.float32)
     paper_level = float(np.median(paper[white_zone])) if white_zone.any() else float(gray.max())
     # paper level is only meaningful in white zones; inside the black use the card-wide level

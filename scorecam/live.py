@@ -87,17 +87,29 @@ class LiveScorer:
         self.prev_small: np.ndarray | None = None
         self.still_count = 0
         self.analysed_still = False  # the current still period has been analysed
+        self.analysis_due = False  # set by observe(): a full frame should be analysed now
         self.locked = False
         self.reference: list[Shot] | None = None  # holes known to be on the target
         self.series = 0
         self.last_result: CardResult | None = None
 
     def feed(self, bgr: np.ndarray, t: float | None = None, full=None) -> LiveEvent | None:
-        """`bgr` is watched for motion (any resolution, e.g. the camera's low-res
-        stream). When a still picture is to be analysed, `full` supplies the
-        full-resolution frame: an array, a callable returning one, or None to use
-        `bgr` itself."""
+        """observe() then analyse() in one call. `bgr` is watched for motion (any
+        resolution, e.g. the camera's low-res stream). When a still picture is to
+        be analysed, `full` supplies the full-resolution frame: an array, a
+        callable returning one, or None to use `bgr` itself."""
         t = time.time() if t is None else t
+        ev = self.observe(bgr, t)
+        if ev is not None or not self.analysis_due:
+            return ev
+        frame = full() if callable(full) else (bgr if full is None else full)
+        return self.analyse(frame, t)
+
+    def observe(self, bgr: np.ndarray, t: float | None = None) -> LiveEvent | None:
+        """Track motion. Afterwards `analysis_due` says whether a full-resolution
+        frame of this still picture should now go through analyse()."""
+        t = time.time() if t is None else t
+        self.analysis_due = False
         small = reduce(bgr)
         moving = self.prev_small is not None and frame_motion(self.prev_small, small) >= MOTION_MIN_PIXELS
         self.prev_small = small
@@ -107,15 +119,20 @@ class LiveScorer:
             self.analysed_still = False
             return LiveEvent("moving", t, series=self.series) if was_still else None
         self.still_count += 1
-        if self.still_count < self.stable_frames or self.analysed_still:
-            return None
+        if self.still_count >= self.stable_frames and not self.analysed_still:
+            self.analysis_due = True
+        return None
+
+    def analyse(self, frame: np.ndarray, t: float | None = None) -> LiveEvent | None:
+        """Run the still pipeline on a full frame of the current still picture."""
+        t = time.time() if t is None else t
         self.analysed_still = True
-        frame = full() if callable(full) else (bgr if full is None else full)
+        self.analysis_due = False
         return self._analyse(frame, t)
 
     def _analyse(self, bgr: np.ndarray, t: float) -> LiveEvent | None:
         try:
-            result = process_frame(bgr, self.target, self.pellet_mm)
+            result = process_frame(bgr, self.target, self.pellet_mm, roi=True)
         except CalibrationError as e:
             if self.locked:
                 self.locked = False

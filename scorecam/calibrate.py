@@ -211,28 +211,39 @@ def _sample_profiles(gray: np.ndarray, to_px, radius_mm: float, window_mm: float
 
 def _locate(profile: np.ndarray, kind: str) -> float | None:
     """Sub-sample index of the ring feature in a 1-D radial profile, or None."""
-    if (profile < 0).any():
-        return None  # left the image
-    p = cv2.GaussianBlur(profile.reshape(1, -1), (0, 0), 1.0).ravel()
-    rng = p.max() - p.min()
-    if rng < 1e-3:
-        return None
+    k = _locate_all(profile.reshape(1, -1), kind)[0]
+    return None if np.isnan(k) else float(k)
+
+
+def _locate_all(prof: np.ndarray, kind: str) -> np.ndarray:
+    """_locate for every row of prof [n, m] at once; NaN where there is no feature."""
+    n, m = prof.shape
+    out = np.full(n, np.nan)
+    ok = ~(prof < 0).any(axis=1)  # rows that left the image are out
+    kx = cv2.getGaussianKernel(9, 1.0).astype(np.float32)  # blur along the profile only
+    p = cv2.sepFilter2D(prof.astype(np.float32), -1, kx, np.ones((1, 1), np.float32),
+                        borderType=cv2.BORDER_REFLECT_101)
+    rng = p.max(axis=1) - p.min(axis=1)
+    ok &= rng > 1e-3
     if kind == "dark_line":
         sig = -p
     elif kind == "light_line":
         sig = p
     else:
-        g = np.gradient(p)
+        g = np.gradient(p, axis=1)
         sig = g if kind == "edge_out_bright" else -g
-    k = int(np.argmax(sig))
-    if k <= 0 or k >= len(sig) - 1:
-        return None
-    contrast = (sig[k] - np.median(sig)) / rng if kind.endswith("line") else sig[k] / rng
-    if contrast < REFINE_MIN_CONTRAST:
-        return None
-    y0, y1, y2 = sig[k - 1], sig[k], sig[k + 1]
+    k = np.argmax(sig, axis=1)
+    ok &= (k > 0) & (k < m - 1)
+    kc = np.clip(k, 1, m - 2)
+    rows = np.arange(n)
+    peak = sig[rows, kc]
+    contrast = (peak - np.median(sig, axis=1)) / np.maximum(rng, 1e-9) if kind.endswith("line") else peak / np.maximum(rng, 1e-9)
+    ok &= contrast >= REFINE_MIN_CONTRAST
+    y0, y1, y2 = sig[rows, kc - 1], peak, sig[rows, kc + 1]
     denom = y0 - 2 * y1 + y2
-    return k + (0.5 * (y0 - y2) / denom if abs(denom) > 1e-9 else 0.0)
+    sub = np.where(np.abs(denom) > 1e-9, 0.5 * (y0 - y2) / np.where(np.abs(denom) > 1e-9, denom, 1.0), 0.0)
+    out[ok] = (kc + sub)[ok]
+    return out
 
 
 def _collect(gray, to_px, target: Target, window_mm: float):
@@ -241,11 +252,9 @@ def _collect(gray, to_px, target: Target, window_mm: float):
     src, dst = [], []
     for b in target.boundaries():
         prof, offs, model, px0, dirs, ppm = _sample_profiles(gray, to_px, b.radius_mm, window_mm, n_angles)
-        for i in range(n_angles):
-            k = _locate(prof[i], b.kind)
-            if k is None:
-                continue
-            off_mm = np.interp(k, np.arange(len(offs)), offs)
+        ks = _locate_all(prof, b.kind)
+        for i in np.flatnonzero(~np.isnan(ks)):
+            off_mm = np.interp(ks[i], np.arange(len(offs)), offs)
             src.append(model[i])
             dst.append(px0[i] + dirs[i] * off_mm * ppm[i])
     return np.array(src, np.float64).reshape(-1, 2), np.array(dst, np.float64).reshape(-1, 2)
@@ -335,10 +344,9 @@ def measure_ring_offsets(gray: np.ndarray, cal: Calibration, target: Target,
     offsets = np.full((len(bounds), n_angles), np.nan)
     for j, b in enumerate(bounds):
         prof, offs, model, *_ = _sample_profiles(gray, cal.to_px, b.radius_mm, window_mm, n_angles)
-        for i in range(n_angles):
-            k = _locate(prof[i], b.kind)
-            if k is not None:
-                offsets[j, i] = np.interp(k, np.arange(len(offs)), offs)
+        ks = _locate_all(prof, b.kind)
+        found = ~np.isnan(ks)
+        offsets[j, found] = np.interp(ks[found], np.arange(len(offs)), offs)
         for (hx, hy, hr) in exclude_mm or []:
             near = np.hypot(model[:, 0] - hx, model[:, 1] - hy) < hr + window_mm + 0.3
             offsets[j, near] = np.nan
@@ -393,13 +401,18 @@ def calibrate(gray: np.ndarray, target: Target) -> Calibration:
 
 
 def rectify(image: np.ndarray, cal: Calibration, target: Target, px_per_mm: float,
-            margin_mm: float = 5.0, grid_px: int = 8) -> tuple[np.ndarray, np.ndarray]:
+            margin_mm: float = 5.0, grid_px: int = 8, roi_mm: float | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Warp the image into the target frame. Returns (rectified, T) where T maps
-    target mm to rectified px and the image covers the whole card plus a margin.
+    target mm to rectified px and the image covers the whole card plus a margin,
+    or, with roi_mm, only a square reaching roi_mm beyond the outer scoring ring
+    (live mode: a miss further out than that is not seen, but the work halves).
     The mm->px map is evaluated on a coarse grid (grid_px) and interpolated: the
     distortion polynomial is smooth, and this is ~50x cheaper than per pixel."""
     w_mm, h_mm = target.card_mm
     ox, oy = target.center_offset_mm
+    if roi_mm is not None:
+        half = target.outer_radius_mm + roi_mm
+        w_mm, h_mm, ox, oy = 2 * half, 2 * half, 0.0, 0.0
     x0, y0 = -w_mm / 2 - ox - margin_mm, -h_mm / 2 - oy - margin_mm
     T = np.array([[px_per_mm, 0, -x0 * px_per_mm], [0, px_per_mm, -y0 * px_per_mm], [0, 0, 1]])
     W, Hh = int((w_mm + 2 * margin_mm) * px_per_mm), int((h_mm + 2 * margin_mm) * px_per_mm)
