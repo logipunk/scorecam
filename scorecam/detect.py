@@ -28,28 +28,29 @@ DARK_FRAC = 0.09  # hole must be this fraction darker than local paper
 BRIGHT_FRAC = 0.20  # rim must be this fraction (of paper level) brighter than local ink (halo of dented paper is ~0.1-0.18)
 WARM_SHIFT = 12.0  # Lab (a+b) shift from the zone's own tint
 FILL_MAX_MM2 = 12.0  # enclosed gaps smaller than this are filled
-OPEN_DISC_MM = 3.2  # opening disc: kills numerals/lines, keeps holes
+OPEN_DISC_MM = 2.6  # opening disc: kills lines/strokes, keeps a hole core (a .22 hole in paper closes to ~3 mm)
 RECOVER_MM = 0.6  # grow kept blobs back into the raw mask by this much (torn edges, not line stubs)
 MIN_DIAMETER_MM = 3.2  # single-hole equivalent diameter range
 MAX_DIAMETER_MM = 6.2
-MIN_ROUNDNESS = 0.55
+MIN_ROUNDNESS = 0.45  # 4*pi*area/perimeter^2; a torn .22 hole in paper is ragged, ~0.5
 MIN_SOLIDITY = 0.60  # blob area / convex hull area (overlap groups too)
 MAX_PAPER_FRAC = 0.20  # blob pixels at paper level: torn holes have few, numerals many
 PAPER_LEVEL_FRAC_WHITE = 0.92  # "paper level" in white zones, relative to local paper
 PAPER_LEVEL_FRAC_BLACK = 0.80  # white numeral strokes in the black blur a little darker
 NUMERAL_RADIUS_MM = 3.5  # a candidate centred within this of a printed numeral is suspect
-NUMERAL_PATCH_MM = 7.5  # patch around a numeral compared with its siblings at other angles
+NUMERAL_PATCH_MM = 7.5  # patch around a numeral position in which printed strokes are removed
+NUMERAL_STROKE_MAX_MM = 1.4  # printed structures thinner than this are glyph strokes, not a hole core
 NUMERAL_ALIGN_MM = 0.5  # sibling patches may be shifted this much when registering them
 WARM_EDGE_GRAD = 18.0  # grey levels per px: warm cue is ignored near stronger edges (colour fringing)
 WARM_EDGE_GROW_MM = 0.3
 NUMERAL_STROKE_GROW_MM = 0.35  # grow the stroke template before subtracting it from a blob
-MIN_NUMERAL_EXTRA_MM2 = 5.0  # blob area beyond the printed strokes needed to call it a hole
-NUMERAL_EXTRA_OPEN_MM = 2.4  # opening applied to that extra area (drops edge slivers, keeps a hole core)
+MIN_NUMERAL_EXTRA_MM2 = 3.0  # blob area beyond the printed strokes needed to call it a hole
+NUMERAL_EXTRA_OPEN_MM = 2.0  # opening applied to that extra area (drops edge slivers, keeps a hole core)
 INK_LEVEL_FRAC = 0.55  # "ink level" in white zones: darker than this fraction of local paper
 LINE_BAND_MM = 0.6  # half-width of the band blanked around each thin printed ring line
 BRIDGE_MM = 1.4  # closing that rejoins a solid hole cut by a blanked line band
 ZONES_FOLLOW_RINGS = False  # place zone edges at measured ring positions (worse on obstructed cards)
-MAX_SINGLE_LENGTH_MM = 6.5  # a blob longer than this AND elongated holds more than one pellet
+MAX_SINGLE_LENGTH_FACTOR = 1.45  # a blob longer than this x the pellet AND elongated holds more than one
 MAX_SINGLE_ASPECT = 1.4  # length / width above which a long blob is an overlap group
 CARD_EDGE_MARGIN_MM = 2.5
 
@@ -240,6 +241,26 @@ def numeral_centres(target: Target, theta_card: float, cal: Calibration | None) 
 
 def numeral_stroke_mask(printed: np.ndarray, px_per_mm: float, T: np.ndarray, target: Target,
                         theta_card: float, cal: Calibration | None, card_mask: np.ndarray) -> np.ndarray:
+    """Printed strokes of the ring numerals, to be subtracted from a candidate that
+    sits on a numeral. Two sources, united: (1) within a patch around each numeral
+    position, the printed structures thinner than a stroke width (a hole has a
+    solid core wider than any stroke); (2) when numerals are printed at three or
+    more angles, the strokes the sibling glyphs agree on (handles soft focus, where
+    strokes blur wide)."""
+    half = int(NUMERAL_PATCH_MM / 2 * px_per_mm)
+    thick = cv2.morphologyEx(printed, cv2.MORPH_OPEN, _disc(NUMERAL_STROKE_MAX_MM, px_per_mm))
+    thin = printed & ~thick
+    out = np.zeros(printed.shape, np.uint8)
+    for (x, y) in numeral_centres(target, theta_card, cal):
+        cx, cy = int(round(T[0, 2] + x * px_per_mm)), int(round(T[1, 2] + y * px_per_mm))
+        y0, y1, x0, x1 = max(cy - half, 0), cy + half, max(cx - half, 0), cx + half
+        out[y0:y1, x0:x1] |= thin[y0:y1, x0:x1]
+    out |= numeral_sibling_strokes(printed, px_per_mm, T, target, theta_card, cal, card_mask)
+    return cv2.dilate(out, _disc(2 * NUMERAL_STROKE_GROW_MM, px_per_mm))
+
+
+def numeral_sibling_strokes(printed: np.ndarray, px_per_mm: float, T: np.ndarray, target: Target,
+                        theta_card: float, cal: Calibration | None, card_mask: np.ndarray) -> np.ndarray:
     """Printed strokes of the ring numerals, learned from the card itself: glyphs
     are upright at every angle, so the sibling patches of one numeral agree on
     the strokes (majority vote after registration) while a hole, or the ring arcs
@@ -277,7 +298,8 @@ def numeral_stroke_mask(printed: np.ndarray, px_per_mm: float, T: np.ndarray, ta
         template = (np.sum(aligned, axis=0) >= max(2, len(aligned) - 1)).astype(np.uint8)
         for (y0, x0), (dx, dy) in zip(boxes, shifts):
             out[y0 + dy:y0 + dy + 2 * half, x0 + dx:x0 + dx + 2 * half] |= template
-    return cv2.dilate(out, _disc(2 * NUMERAL_STROKE_GROW_MM, px_per_mm))
+    return out
+
 
 
 def cue_maps(bgr: np.ndarray, px_per_mm: float, white_zone: np.ndarray, black_zone: np.ndarray):
@@ -386,7 +408,8 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
             rejected.append({**info, "why": f"not solid ({shape['solidity']:.2f})"})
             continue
         common = dict(paper_frac=paper_frac, warm_frac=warm_frac, solidity=shape["solidity"])
-        multi = shape["length"] > MAX_SINGLE_LENGTH_MM and shape["length"] / max(shape["width"], 0.1) > MAX_SINGLE_ASPECT
+        multi = (shape["length"] > MAX_SINGLE_LENGTH_FACTOR * pellet_mm
+                 and shape["length"] / max(shape["width"], 0.1) > MAX_SINGLE_ASPECT)
         if not multi and shape["diameter"] <= MAX_DIAMETER_MM + 1.0:
             if shape["roundness"] < MIN_ROUNDNESS:
                 rejected.append({**info, "why": f"not round ({shape['roundness']:.2f})"})
