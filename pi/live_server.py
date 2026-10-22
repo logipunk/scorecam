@@ -61,6 +61,7 @@ td,th{padding:4px 8px;text-align:left;border-bottom:1px solid #333}
 td.s{font-weight:bold;font-size:22px}
 #total{padding:8px;font-size:22px}</style></head><body>
 <img src="/stream.mjpg">
+<img id=tgt src="/target.jpg" alt="" style="display:none">
 <div class=bar><button id=z onclick="go('/zoom')">Zoom OFF</button>
 <button onclick="go('/capture')">Capture</button>
 <button onclick="startSession()">New session</button></div>
@@ -70,7 +71,9 @@ td.s{font-weight:bold;font-size:22px}
 <script>
 function go(u){fetch(u).then(r=>r.text()).then(t=>{if(/zoom/.test(t)){var z=document.getElementById('z');var on=/1:1/.test(t);z.textContent=on?'Zoom ON (1:1)':'Zoom OFF';z.className=on?'on':''}})}
 function startSession(){var n=prompt('Shooter name (optional)','')||'';fetch('/session/start?shooter='+encodeURIComponent(n)).then(poll)}
+var stamp=0;
 function poll(){fetch('/status').then(r=>r.json()).then(s=>{
+  if(s.stamp&&s.stamp!=stamp){stamp=s.stamp;var im=document.getElementById('tgt');im.src='/target.jpg?'+stamp;im.style.display='block'}
   document.getElementById('state').textContent=s.state+(s.series?'  series '+s.series:'')+(s.busy?'  analysing...':'');
   document.getElementById('focus').textContent='focus '+s.focus+'   '+s.target+' '+s.caliber+' mm   session '+s.session;
   var tb=document.getElementById('shots');tb.innerHTML='';var tot=0,x=0;
@@ -121,6 +124,8 @@ class Service:
         self.writer: SessionWriter | None = None
         self.shots: list[dict] = []
         self.events: list[dict] = []
+        self.target_jpeg: bytes | None = None
+        self.stamp = 0
         self.start_session(target_name, caliber, "")
         threading.Thread(target=self.loop, daemon=True).start()
 
@@ -191,6 +196,37 @@ class Service:
         finally:
             self.busy = False
 
+    def render_target(self, ev: LiveEvent):
+        """The analysed frame with every hole marked: known ones white, this
+        event's new shots yellow with their session number."""
+        res = ev.result
+        img = res.rectified.copy()
+        T = res.T_mm_to_rect
+        fresh = {id(s) for s in ev.shots}
+        n0 = len(self.shots) - len(ev.shots) if ev.kind == "shots" else len(self.shots)
+        k = 0
+        for s in sorted(res.shots, key=lambda s: -s.score.decimal):
+            if "off_target" in s.flags:
+                continue
+            p = (int(T[0, 2] + s.x_mm * T[0, 0]), int(T[1, 2] + s.y_mm * T[1, 1]))
+            new = id(s) in fresh
+            col = (0, 220, 255) if new else (255, 255, 255)
+            cv2.circle(img, p, int(3.2 * T[0, 0]), col, 3)
+            label = f"{s.score.value}{'X' if s.score.inner else ''}"
+            if new:
+                k += 1
+                label = f"#{n0 + k} {label}"
+            cv2.putText(img, label, (p[0] + 36, p[1] + 10), cv2.FONT_HERSHEY_SIMPLEX, 1.0, col, 2)
+        txt = {"locked": f"locked: {ev.existing} holes already on target", "shots": f"{len(ev.shots)} new",
+               "still": "no change"}.get(ev.kind, ev.kind)
+        cv2.putText(img, txt, (12, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 220, 255), 3)
+        scale = 900 / img.shape[1]
+        small = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if ok:
+            self.target_jpeg = buf.tobytes()
+            self.stamp = int(time.time() * 1000)
+
     def handle(self, ev: LiveEvent, full: np.ndarray | None):
         with self.lock:
             if self.writer is None:
@@ -211,6 +247,8 @@ class Service:
                 self.state = "moving"
             elif ev.kind == "still":
                 self.state = "locked, no change" if self.scorer.locked else f"no target ({ev.message})"
+            if ev.result is not None:
+                self.render_target(ev)
 
     # ---- misc
     def toggle_zoom(self) -> str:
@@ -232,7 +270,8 @@ class Service:
         return {"state": self.state, "busy": self.busy, "series": self.scorer.series if self.scorer else 0,
                 "locked": bool(self.scorer and self.scorer.locked), "focus": round(self.focus),
                 "target": self.target_name, "caliber": self.caliber,
-                "session": self.writer.header.id if self.writer else "none", "shots": self.shots}
+                "session": self.writer.header.id if self.writer else "none", "shots": self.shots,
+                "stamp": self.stamp}
 
 
 service: Service | None = None
@@ -266,6 +305,11 @@ class Handler(server.BaseHTTPRequestHandler):
         elif u.path == "/session/stop":
             service.stop_session()
             self._send("stopped", "text/plain")
+        elif u.path == "/target.jpg":
+            if service.target_jpeg is None:
+                self.send_error(404)
+            else:
+                self._send(service.target_jpeg, "image/jpeg")
         elif u.path == "/zoom":
             self._send(service.toggle_zoom(), "text/plain")
         elif u.path == "/capture":
