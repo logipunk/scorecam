@@ -1,21 +1,105 @@
 # Ground truth for NRA B-3 sheets photographed with the Pi HQ camera (test-cards/nra/).
-# Hand scores per hole, clockwise from 12 o'clock; X = inner ten. 0 = outside the rings.
-# Sheet numbers are the handwritten "#n" on the paper. Scores to be filled in from the shooter.
+# Hand scores per hole as given by the shooter (not in clock order); X = inner ten. 0 = outside the rings.
+# Sheet numbers are the handwritten "#n" on the paper. Edge hits are scored with the higher value (rule 14.3).
 
-target:
-  name: nra_b3
-  pellet_mm: 5.6        # .22 LR
-
-capture:
-  camera: rpi_hq_imx477
-  lens: canon_efs_55_250_is
-  distance_m: 9
-
+target: {name: nra_b3, pellet_mm: 5.6}
+capture: {camera: rpi_hq_imx477, lens: canon_efs_55_250_is, distance_m: 9}
 cards:
-  - {file: 20261022_122958.jpg, sheet: 3, notes: "lens at wide end, 0.17 mm/px; shooter's head in frame", holes: []}
-  - {file: 20261022_123110.jpg, sheet: 4, notes: "lens at wide end, 0.17 mm/px", holes: []}
-  - {file: 20261022_123207.jpg, sheet: 5, notes: "lens at wide end, 0.17 mm/px", holes: []}
-  - {file: 20261022_123240.jpg, sheet: 6, notes: "lens at wide end, 0.17 mm/px", holes: []}
-  - {file: 20261022_123317.jpg, sheet: 7, notes: "lens at wide end, 0.17 mm/px", holes: []}
-  - {file: 20261022_123327.jpg, sheet: 7, notes: "second capture of sheet 7", holes: []}
-  - {file: 20261022_123404.jpg, sheet: 8, notes: "lens at wide end, 0.17 mm/px", holes: []}
+- file: 20261022_122958.jpg
+  sheet: 3
+  notes: lens at wide end, 0.17 mm/px; shooter's head in frame
+  holes:
+  - {score: 10, inner: true}
+  - {score: 10, inner: true}
+  - {score: 9}
+  - {score: 10, seen: 9-10 edge}
+  - {score: 9}
+  - {score: 9}
+  - {score: 8}
+  - {score: 8}
+  - {score: 8}
+  - {score: 7}
+- file: 20261022_123110.jpg
+  sheet: 4
+  notes: lens at wide end, 0.17 mm/px
+  holes:
+  - {score: 10}
+  - {score: 10}
+  - {score: 10, seen: 9-10 edge}
+  - {score: 9, seen: 8-9 edge}
+  - {score: 9, seen: 8-9 edge}
+  - {score: 9, seen: 8-9 edge}
+  - {score: 8}
+  - {score: 8}
+  - {score: 8}
+  - {score: 7}
+- file: 20261022_123207.jpg
+  sheet: 5
+  notes: lens at wide end, 0.17 mm/px
+  holes:
+  - {score: 10}
+  - {score: 10}
+  - {score: 10}
+  - {score: 10}
+  - {score: 10}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 8}
+- file: 20261022_123240.jpg
+  sheet: 6
+  notes: lens at wide end, 0.17 mm/px
+  holes:
+  - {score: 10, inner: true}
+  - {score: 10, inner: true}
+  - {score: 10, inner: true, seen: 10-X edge}
+  - {score: 10}
+  - {score: 9}
+  - {score: 8}
+  - {score: 8}
+  - {score: 8}
+  - {score: 8}
+  - {score: 8, seen: 7-8 edge}
+- file: 20261022_123317.jpg
+  sheet: 7
+  notes: lens at wide end, 0.17 mm/px
+  holes:
+  - {score: 10, inner: true}
+  - {score: 10, inner: true, seen: 10-X edge}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 8}
+  - {score: 8}
+  - {score: 8}
+- file: 20261022_123327.jpg
+  sheet: 7
+  notes: second capture of sheet 7
+  holes:
+  - {score: 10, inner: true}
+  - {score: 10, inner: true, seen: 10-X edge}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 8}
+  - {score: 8}
+  - {score: 8}
+- file: 20261022_123404.jpg
+  sheet: 8
+  notes: lens at wide end, 0.17 mm/px
+  holes:
+  - {score: 10, inner: true, seen: X-10 edge}
+  - {score: 10}
+  - {score: 10}
+  - {score: 10}
+  - {score: 10, seen: 9-10 edge}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 9}
+  - {score: 7, seen: 6-7 edge}

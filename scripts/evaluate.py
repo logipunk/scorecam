@@ -33,7 +33,8 @@ def match(expected: list, found: list) -> tuple[list, list, list]:
         if e.get("score") is None:
             rest.append(e)
             continue
-        hit = next((s for s in pool if s.score.value == e["score"]), None)
+        want_x = e.get("inner")
+        hit = next((s for s in pool if s.score.value == e["score"] and (want_x is None or bool(s.score.inner) == want_x)), None)
         if hit is None:
             rest.append(e)
         else:
@@ -83,7 +84,7 @@ def main():
             cv2.imwrite(str(out / f"{path.stem}_cues.png"), cue_sheet(res))
         pairs, misses, fps = match(expected, res.shots)
         checked = [(e, s) for e, s in pairs if e.get("score") is not None]
-        ok = [(e, s) for e, s in checked if e["score"] == s.score.value]
+        ok = [(e, s) for e, s in checked if e["score"] == s.score.value and (e.get("inner") is None or bool(s.score.inner) == e["inner"])]
         c = res.calibration
         print(f"\n{card['file']}: {len(expected)} expected, {len(res.shots)} found, {dt:.1f}s  "
               f"[{c.mm_per_px:.4f} mm/px, ring RMS {c.residual_mm:.2f} mm"
