@@ -50,6 +50,12 @@ Web UI and live camera pipeline come after detection is proven on stills.
 2. Live mode: frame differencing between stable frames (new hole = new shot), with per-frame alignment.
 3. Still mode (Phase 1): detect holes directly on single images.
 4. Hole center via sub-pixel fit; overlap handling; manual correction always available.
+5. Bullseye ranges use turning targets: the target faces the shooter only during the string
+   ("fire" = target turns to face). Live mode must gate on "rings locked" (face-on) and compare
+   the first stable face-on frame of a string with the last one before the turn; each face-on
+   period gets its own calibration since the target never returns to exactly the same angle.
+- Observed on real NRA sheets: a .22 hole closes to a ~3 mm dark core with torn fibres (bright
+  C-shaped rim in the black). Fresh holes with a backstop behind look darker and cleaner.
 - Classical CV (OpenCV) first. ML only where classical fails (e.g. overlaps).
 
 ## Architecture (target)
