@@ -224,7 +224,8 @@ def numeral_centres(target: Target, theta_card: float, cal: Calibration | None) 
     out = []
     inner = 0.0
     for ring in target.rings:
-        mid = (inner + ring.radius_mm) / 2
+        # the innermost ring's numeral (e.g. the "10" on NRA bullseye sheets) sits at the centre
+        mid = 0.0 if inner == 0.0 else (inner + ring.radius_mm) / 2
         inner = ring.radius_mm
         if ring.value not in target.numeral_rings:
             continue
