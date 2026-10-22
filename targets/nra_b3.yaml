@@ -6,7 +6,9 @@
 name: nra_b3
 description: NRA B-3 50 ft timed and rapid fire pistol
 card_mm: [266.7, 304.8]   # 10.5 x 12 in sheet
-center_offset_mm: [0, 0]  # TODO: measure on a scan
+# Offset of the ring centre from the sheet centre (x right, y down), mm.
+# National Target Co. print, measured from Pi photos: centred horizontally, ~2.5 mm below centre.
+center_offset_mm: [0, 2.5]
 rings:
   - {value: 10, radius_mm: 22.86, color: black}
   - {value: 9,  radius_mm: 38.86, color: black}
@@ -15,7 +17,15 @@ rings:
   - {value: 6,  radius_mm: 105.66, color: white}
 outer_color: white
 inner_ring_radius_mm: 11.43   # X ring, 0.90 in diameter
-numeral_angles_deg: []
-numeral_rings: []
-# Printed header/footer text (x0, y0, x1, y1 in mm from the ring centre): TODO from a scan.
-ignore_regions_mm: []
+# Ring numerals 6-10 run along the horizontal to the left of centre (one angle only);
+# an "X" is printed at the centre.
+numeral_angles_deg: [180]
+numeral_rings: [6, 7, 8, 9, 10, X]
+# Printed text on the National Target Co. sheet (x0, y0, x1, y1 in mm from the ring centre),
+# measured from Pi photos of shot sheets. Handwritten marks are not covered.
+ignore_regions_mm:
+  - [-122, -158, 114, -124]  # header: "NATIONAL RIFLE ASSOCIATION / OFFICIAL 50 FT. TIMED AND RAPID FIRE PISTOL TARGET"
+  - [78, -124, 136, -70]     # match / relay / target / stage lines, top right
+  - [-134, 106, -40, 158]    # NRA official competition logo and small print, bottom left
+  - [-68, 116, 70, 152]      # manufacturer box, bottom centre
+  - [102, 138, 132, 158]     # "NRA B-3", bottom right

@@ -24,6 +24,7 @@ DISC_MIN_FRAC = 0.04  # disc major axis must be at least this fraction of image 
 DISC_MIN_FILL = 0.80  # blob area / fitted ellipse area
 DISC_MIN_ASPECT = 0.45
 DISC_SURROUND_CONTRAST = 1.6  # mean(surrounding paper) / mean(disc)
+DISC_THRESH_FRACS = (0.3, 0.45, 0.6)  # dark thresholds as fractions of the image median, tried besides Otsu
 REFINE_ANGLE_STEP_DEG = 2
 HOMOGRAPHY_WINDOWS_MM = (2.0, 1.2)  # radial search half-width per homography pass
 POLY_WINDOWS_MM = (2.5, 1.2, 0.6)  # per polynomial-correction pass
@@ -103,18 +104,40 @@ def _apply(H: np.ndarray, pts) -> np.ndarray:
 
 # ---------------------------------------------------------------- black disc
 def find_black_disc(gray: np.ndarray) -> tuple:
-    """Return the cv2 ellipse of the black disc's outer edge, in full-res px."""
+    """Return the cv2 ellipse of the black disc's outer edge, in full-res px.
+
+    Otsu alone fails when the scene is bimodal for another reason (a bright window
+    next to a lit wall puts the threshold between the two and the whole wall turns
+    "dark"), so several thresholds are tried and the largest blob that passes the
+    disc tests wins, ranked by how round, filled and dark against its surround it is
+    (not by size: a lower threshold can grow background clutter larger than the disc)."""
     s = DISC_SEARCH_SCALE
     small = cv2.resize(gray, None, fx=1 / s, fy=1 / s, interpolation=cv2.INTER_AREA)
     blur = cv2.GaussianBlur(small, (0, 0), 1.5)
-    thresh, _ = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    otsu, _ = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    median = float(np.median(blur))
+    thresholds = sorted({float(otsu)} | {median * f for f in DISC_THRESH_FRACS})
+    best, best_score = None, 0.0
+    for thresh in thresholds:
+        for ellipse, score in _disc_candidates(blur, thresh):
+            if score > best_score:
+                best, best_score = ellipse, score
+    if best is None:
+        raise CalibrationError("black disc not found")
+    (cx, cy), (a, b), ang = best
+    return ((cx * s, cy * s), (a * s, b * s), ang)
+
+
+def _disc_candidates(blur: np.ndarray, thresh: float) -> list[tuple[tuple, float]]:
+    """Blobs darker than thresh that look like a black aiming disc: (ellipse, score),
+    score = aspect ratio x ellipse fill x surround contrast."""
     dark = (blur < thresh).astype(np.uint8)
     dark = cv2.morphologyEx(dark, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
     n, labels, stats, _ = cv2.connectedComponentsWithStats(dark)
-    best, best_area = None, 0
+    out = []
     for i in range(1, n):
         area = stats[i, cv2.CC_STAT_AREA]
-        if area <= best_area or stats[i, cv2.CC_STAT_WIDTH] < DISC_MIN_FRAC * small.shape[1]:
+        if stats[i, cv2.CC_STAT_WIDTH] < DISC_MIN_FRAC * blur.shape[1]:
             continue
         blob = _fill_holes((labels == i).astype(np.uint8))
         cnts, _ = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -123,17 +146,15 @@ def find_black_disc(gray: np.ndarray) -> tuple:
             continue
         ellipse = cv2.fitEllipse(cnt)
         (cx, cy), (a, b), ang = ellipse
-        if min(a, b) <= 0 or min(a, b) / max(a, b) < DISC_MIN_ASPECT:
+        if min(a, b) <= 0:
             continue
-        if blob.sum() / (np.pi * a * b / 4) < DISC_MIN_FILL:
+        aspect = min(a, b) / max(a, b)
+        fill = blob.sum() / (np.pi * a * b / 4)
+        contrast = _surround_contrast(blur, blob, ellipse)
+        if aspect < DISC_MIN_ASPECT or fill < DISC_MIN_FILL or contrast < DISC_SURROUND_CONTRAST:
             continue
-        if _surround_contrast(blur, blob, ellipse) < DISC_SURROUND_CONTRAST:
-            continue
-        best, best_area = ellipse, area
-    if best is None:
-        raise CalibrationError("black disc not found")
-    (cx, cy), (a, b), ang = best
-    return ((cx * s, cy * s), (a * s, b * s), ang)
+        out.append((ellipse, aspect * min(fill, 1.0) * contrast))
+    return out
 
 
 def _fill_holes(mask: np.ndarray) -> np.ndarray:

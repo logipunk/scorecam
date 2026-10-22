@@ -24,3 +24,6 @@ cards:
       - {score: 7, seen: "edge of black"}
       - {score: 9, seen: "on the 9 numeral"}
       - {score: 8}
+
+  - {file: 20261022_122753.jpg, sheet: 1, notes: "second capture of sheet 1, 0.17 mm/px", holes: []}
+  - {file: 20261022_122907.jpg, sheet: 2, notes: "lens at wide end, 0.17 mm/px", holes: []}

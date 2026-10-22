@@ -222,9 +222,11 @@ def thin_line_band(r: np.ndarray, theta: np.ndarray, target: Target, cal: Calibr
 def numeral_centres(target: Target, theta_card: float, cal: Calibration | None) -> list[tuple[float, float]]:
     """Target-frame (mm) centres of the printed ring numerals."""
     out = []
-    inner = 0.0
+    if "X" in target.numeral_rings:  # a printed X (or other mark) at the centre
+        out.append((0.0, 0.0))
+    inner = target.inner_ring_radius_mm or 0.0
     for ring in target.rings:
-        # the innermost ring's numeral (e.g. the "10" on NRA bullseye sheets) sits at the centre
+        # the innermost ring's numeral (e.g. the "10" on an NRA B-2) sits at the centre
         mid = 0.0 if inner == 0.0 else (inner + ring.radius_mm) / 2
         inner = ring.radius_mm
         if ring.value not in target.numeral_rings:
