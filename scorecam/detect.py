@@ -26,6 +26,7 @@ BG_DISC_MM = 5.5  # local background disc: > hole diameter, < ring band width
 BG_SCALE = 2  # the background levels are computed at 1/BG_SCALE resolution (max/min pooled)
 EDGE_BAND_MM = 0.5  # ignore this band either side of a black/white edge (alignment)
 DARK_FRAC = 0.09  # hole must be this fraction darker than local paper
+DEEP_FRAC = 0.0  # hole darker than the local ink level by this fraction of paper level (0 = off)
 BRIGHT_FRAC = 0.20  # rim must be this fraction (of paper level) brighter than local ink (halo of dented paper is ~0.1-0.18)
 WARM_SHIFT = 12.0  # Lab (a+b) shift from the zone's own tint
 FILL_MAX_MM2 = 12.0  # enclosed gaps smaller than this are filled
@@ -35,7 +36,7 @@ MIN_DIAMETER_MM = 3.2  # single-hole equivalent diameter range
 MAX_DIAMETER_MM = 6.2
 MIN_ROUNDNESS = 0.45  # 4*pi*area/perimeter^2; a torn .22 hole in paper is ragged, ~0.5
 MIN_SOLIDITY = 0.60  # blob area / convex hull area (overlap groups too)
-MAX_PAPER_FRAC = 0.20  # blob pixels at paper level: torn holes have few, numerals many
+MAX_PAPER_FRAC = 0.30  # blob pixels at paper level above this = printed text; a hole on a lit wall shows some paper-level wall through it
 PAPER_LEVEL_FRAC_WHITE = 0.92  # "paper level" in white zones, relative to local paper
 PAPER_LEVEL_FRAC_BLACK = 0.80  # white numeral strokes in the black blur a little darker
 NUMERAL_RADIUS_MM = 3.5  # a candidate centred within this of a printed numeral is suspect
@@ -388,6 +389,9 @@ def cue_maps(bgr: np.ndarray, px_per_mm: float, white_zone: np.ndarray, black_zo
     paper = np.where(white_zone, paper, paper_level).astype(np.float32)
     dark = ((paper - g) > DARK_FRAC * paper) & white_zone
     bright = ((g - ink) > BRIGHT_FRAC * paper_level) & black_zone
+    if DEEP_FRAC > 0:  # a hole in the black with no torn rim: darker than the ink around it
+        deep_level = cv2.GaussianBlur(ink, (0, 0), 0.5 * px_per_mm)
+        bright |= ((deep_level - g) > DEEP_FRAC * paper_level) & black_zone
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     warm_raw = lab[..., 1].astype(np.float32) + lab[..., 2].astype(np.float32)
     warm_raw = cv2.GaussianBlur(warm_raw, (0, 0), 0.15 * px_per_mm)
