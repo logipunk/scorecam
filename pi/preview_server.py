@@ -74,7 +74,10 @@ class Camera:
     def __init__(self):
         self.cam = Picamera2()
         self.full = self.cam.sensor_resolution
-        self.preview_cfg = self.cam.create_video_configuration(main={"size": PREVIEW_SIZE})
+        # raw size = the 2x2 binned full-sensor mode, so the preview shows the same field of
+        # view as the full-resolution still (the default video mode is a 16:9 crop)
+        self.preview_cfg = self.cam.create_video_configuration(
+            main={"size": PREVIEW_SIZE}, raw={"size": (self.full[0] // 2, self.full[1] // 2)})
         self.still_cfg = self.cam.create_still_configuration(main={"size": self.full})
         self.cam.configure(self.preview_cfg)
         self.output = StreamingOutput()
