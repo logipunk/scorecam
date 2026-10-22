@@ -40,7 +40,10 @@ button.on{background:#c80;color:#000;font-weight:bold}
 <div class=bar><button id=z onclick="go('/zoom')">Zoom OFF (full frame)</button>
 <button onclick="go('/capture')">Capture</button></div>
 <div id=msg></div>
+<div id=focus style="padding:0 8px 8px;font-size:28px;font-weight:bold">focus --</div>
 <script>
+function poll(){fetch('/sharpness').then(r=>r.text()).then(t=>{document.getElementById('focus').textContent='focus '+t;setTimeout(poll,500)}).catch(()=>setTimeout(poll,2000))}
+poll();
 function show(t){document.getElementById('msg').textContent=t;
   var z=document.getElementById('z'), on=/ON/.test(t)||/1:1/.test(t);
   if(/zoom/i.test(t)){z.textContent=on?'Zoom ON (1:1 centre)':'Zoom OFF (full frame)';z.className=on?'on':'';}}
@@ -88,6 +91,14 @@ class Camera:
         self.cam.set_controls({"ScalerCrop": crop})
         self.zoomed = not self.zoomed
         return "zoom 1:1 centre" if self.zoomed else "zoom full frame"
+
+    def live_sharpness(self):
+        """Sharpness of the centre of the live preview (same scale regardless of zoom)."""
+        arr = self.cam.capture_array("main")
+        h, w = arr.shape[:2]
+        centre = arr[h // 2 - 150 : h // 2 + 150, w // 2 - 200 : w // 2 + 200]
+        gray = centre.mean(axis=2) if centre.ndim == 3 else centre
+        return sharpness(gray)
 
     def capture(self):
         CAPTURE_DIR.mkdir(exist_ok=True)
@@ -137,6 +148,8 @@ class Handler(server.BaseHTTPRequestHandler):
             self._text(PAGE)
         elif path == "/zoom":
             self._text(camera.toggle_zoom(), "text/plain")
+        elif path == "/sharpness":
+            self._text(f"{camera.live_sharpness():.0f}", "text/plain")
         elif path == "/status":
             self._text("zoom 1:1 centre" if camera.zoomed else "zoom full frame", "text/plain")
         elif path == "/capture":
