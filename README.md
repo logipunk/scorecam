@@ -33,3 +33,8 @@ live MJPEG preview at `http://scorecam.local:8000/`. Open it on a phone at the
 tripod: **Zoom** switches to a 1:1 centre crop for focusing, **Capture** saves a
 full-resolution JPEG to `~/captures/` on the Pi and prints a sharpness figure for
 the frame centre. Copy captures to the dev machine with `scp`.
+
+On the Pi it is installed as the systemd service `scorecam-preview.service`
+(`/etc/systemd/system/scorecam-preview.service`, runs `~/preview_server.py`), so
+it starts on boot. Headless VNC needs `video=HDMI-A-1:1280x720@60D` at the end of
+`/boot/firmware/cmdline.txt`.

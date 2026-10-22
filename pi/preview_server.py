@@ -89,9 +89,16 @@ class Camera:
         path = CAPTURE_DIR / datetime.now().strftime("%Y%m%d_%H%M%S.jpg")
         self.cam.stop_recording()
         try:
-            arr = self.cam.switch_mode_and_capture_array(self.still_cfg, "main")
-            from PIL import Image  # bundled with picamera2
-            Image.fromarray(arr).save(path, quality=95)
+            self.cam.configure(self.still_cfg)
+            self.cam.start()
+            time.sleep(0.5)  # let exposure settle after the mode switch
+            request = self.cam.capture_request()
+            try:
+                request.save("main", str(path))
+                arr = request.make_array("main")
+            finally:
+                request.release()
+            self.cam.stop()
         finally:
             self.cam.configure(self.preview_cfg)
             self.cam.start_recording(MJPEGEncoder(), FileOutput(self.output))
