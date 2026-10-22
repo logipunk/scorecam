@@ -171,7 +171,7 @@ class Service:
                 req.release()
             if full is not None:
                 self.busy = True
-                threading.Thread(target=self.analyse, args=(full, t0), daemon=True).start()
+                threading.Thread(target=self.analyse, args=(self.scorer, full, t0), daemon=True).start()
             # preview: the lores picture, or a 1:1 crop of its centre when zoomed (focus aid)
             if self.zoomed:
                 h, w = lores.shape[:2]
@@ -187,10 +187,10 @@ class Service:
                     self.jpeg_cond.notify_all()
             time.sleep(max(0.0, FRAME_PERIOD - (time.time() - t0)))
 
-    def analyse(self, full: np.ndarray, t: float):
+    def analyse(self, scorer: LiveScorer, full: np.ndarray, t: float):
         try:
-            ev = self.scorer.analyse(full, t)
-            if ev is not None:
+            ev = scorer.analyse(full, t)
+            if ev is not None and scorer is self.scorer:  # a Rescan may have replaced the scorer meanwhile
                 self.handle(ev, full)
         except Exception as e:  # keep the service alive; show the error on the page
             self.state = f"error: {e}"

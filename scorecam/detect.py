@@ -27,7 +27,7 @@ BG_SCALE = 2  # the background levels are computed at 1/BG_SCALE resolution (max
 EDGE_BAND_MM = 0.5  # ignore this band either side of a black/white edge (alignment)
 DARK_FRAC = 0.09  # hole must be this fraction darker than local paper
 DEEP_FRAC = 0.0  # hole darker than the local ink level by this fraction of paper level (0 = off)
-BRIGHT_FRAC = 0.20  # rim must be this fraction (of paper level) brighter than local ink (halo of dented paper is ~0.1-0.18)
+BRIGHT_FRAC = 0.15  # torn rim in the black above the local ink level, as a fraction of paper level (flat light gives faint rims)
 WARM_SHIFT = 12.0  # Lab (a+b) shift from the zone's own tint
 FILL_MAX_MM2 = 12.0  # enclosed gaps smaller than this are filled
 OPEN_DISC_MM = 2.6  # opening disc: kills lines/strokes, keeps a hole core (a .22 hole in paper closes to ~3 mm)

@@ -154,6 +154,7 @@ class LiveScorer:
         self.locked = False
         self.reference: list[Shot] | None = None  # holes known to be on the target
         self.pending_lock: list[Shot] | None = None  # holes of the first lock analysis, awaiting the second
+        self.suspect_new_target = False  # one analysis lost most known holes; waiting for a second opinion
         self.series = 0
         self.last_result: CardResult | None = None
 
@@ -220,10 +221,17 @@ class LiveScorer:
         fresh = new_holes(self.reference, current)
         gone = new_holes(current, self.reference)  # known holes no longer seen
         if len(self.reference) >= 2 and len(gone) > len(self.reference) * NEW_TARGET_GONE_FRAC:
-            # most known holes have vanished: a fresh target was hung, not a string fired
+            # most known holes have vanished: a fresh target was hung, not a string fired ... or a
+            # hand was in the picture. Believe it only when a second analysis agrees.
+            if not self.suspect_new_target:
+                self.suspect_new_target = True
+                self.analysed_still = False  # look again
+                return None
+            self.suspect_new_target = False
             self.reference = current
             return LiveEvent("locked", t, series=self.series, existing=len(current), result=result,
                              message="new target")
+        self.suspect_new_target = False
         if fresh:  # known holes are kept even when a frame misses one: a flickering detection must not come back as new
             self.reference = list(self.reference) + fresh
             return LiveEvent("shots", t, series=self.series, shots=fresh, result=result)
