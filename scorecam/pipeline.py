@@ -72,7 +72,10 @@ def process_image(path: str | Path, target: Target, pellet_mm: float = 4.5) -> C
         r = float(np.hypot(x, y))
         # score against where the printed rings are near this hole (cancels paper deformation)
         offset = float(cal.ring_offset_at(r, np.arctan2(y, x))[0])
-        shots.append(Shot(0, float(x), float(y), h, score_hole(r - offset, target, pellet_mm), offset))
+        score = score_hole(r - offset, target, pellet_mm)
+        if score.value == 0 and r - offset - pellet_mm / 2 > target.outer_radius_mm:
+            h.flags.append("off_target")  # outside the scoring rings: a miss, or more often not a hole
+        shots.append(Shot(0, float(x), float(y), h, score, offset))
     # number shots by score, highest first (no shot order in a still image)
     shots.sort(key=lambda s: -s.score.decimal)
     for i, s in enumerate(shots, 1):

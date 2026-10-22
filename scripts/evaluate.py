@@ -41,9 +41,11 @@ def match(expected: list, found: list) -> tuple[list, list, list]:
             pairs.append((e, hit))
             pool.remove(hit)
     misses = []
-    for e in rest:  # unscored: any remaining detection counts, nearest-score first is meaningless
-        if pool:
-            pairs.append((e, pool.pop(0)))
+    for e in rest:  # unscored: any remaining on-target detection counts
+        on_target = [s for s in pool if "off_target" not in s.flags]
+        if on_target:
+            pairs.append((e, on_target[0]))
+            pool.remove(on_target[0])
         else:
             misses.append(e)
     return pairs, misses, pool
@@ -64,7 +66,7 @@ def main():
     pellet = a.pellet or float(gt["target"].get("pellet_mm", 4.5))
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    totals = dict(expected=0, found=0, matched=0, score_checked=0, score_ok=0, missed=0, fp=0, flagged=0)
+    totals = dict(expected=0, found=0, matched=0, score_checked=0, score_ok=0, missed=0, fp=0, off_target=0, flagged=0)
     for card in gt["cards"]:
         if card["file"] in SKIP:
             continue
@@ -99,7 +101,7 @@ def main():
         for e in misses:
             print(f"  MISSED     expected {str(e.get('score')):4s}  seen: {e.get('seen', '')!r}")
         for s in fps:
-            print(f"  FALSE POS  got {s.score.value:2d} ({s.score.decimal:4.1f}) {s.clock():10s} d={s.score.distance_mm:5.1f} mm"
+            print(f"  {'OFF-TARGET' if 'off_target' in s.flags else 'FALSE POS '} got {s.score.value:2d} ({s.score.decimal:4.1f}) {s.clock():10s} d={s.score.distance_mm:5.1f} mm"
                   + (f"  [{', '.join(s.flags)}]" if s.flags else ""))
         totals["expected"] += len(expected)
         totals["found"] += len(res.shots)
@@ -107,12 +109,14 @@ def main():
         totals["score_checked"] += len(checked)
         totals["score_ok"] += len(ok)
         totals["missed"] += len(misses)
-        totals["fp"] += len(fps)
+        totals["fp"] += sum(1 for s in fps if "off_target" not in s.flags)
+        totals["off_target"] += sum(1 for s in fps if "off_target" in s.flags)
         totals["flagged"] += sum(1 for s in res.shots if s.flags)
     t = totals
     print("\nSUMMARY")
     print(f"  holes expected {t['expected']}, found {t['found']}, matched {t['matched']}, "
-          f"missed {t['missed']}, false positives {t['fp']}, flagged for review {t['flagged']}")
+          f"missed {t['missed']}, false positives {t['fp']}, off-target detections {t['off_target']}, "
+          f"flagged for review {t['flagged']}")
     print(f"  hand-scored holes: {t['score_ok']}/{t['score_checked']} correct"
           + ("" if t["score_checked"] else " (no integer scores filled in yet)"))
     print(f"  annotated images in {out}/")

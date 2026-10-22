@@ -28,4 +28,4 @@ ignore_regions_mm:
   - [78, -124, 136, -70]     # match / relay / target / stage lines, top right
   - [-134, 106, -40, 158]    # NRA official competition logo and small print, bottom left
   - [-68, 116, 70, 152]      # manufacturer box, bottom centre
-  - [102, 138, 132, 158]     # "NRA B-3", bottom right
+  - [92, 126, 134, 158]      # "NRA B-3", bottom right (position varies a few mm between sheets)
