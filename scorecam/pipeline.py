@@ -57,6 +57,12 @@ def process_image(path: str | Path, target: Target, pellet_mm: float = 4.5) -> C
     bgr = cv2.imread(str(path))
     if bgr is None:
         raise FileNotFoundError(path)
+    return process_frame(bgr, target, pellet_mm, path)
+
+
+def process_frame(bgr: np.ndarray, target: Target, pellet_mm: float = 4.5,
+                  path: Path | None = None) -> CardResult:
+    """The still pipeline on an in-memory BGR frame (live mode feeds frames here)."""
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     cal = calibrate(gray, target)
     rect, T = rectify(bgr, cal, target, PX_PER_MM)
