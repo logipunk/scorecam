@@ -32,7 +32,8 @@ MOTION_BLUR = 5  # box blur (px, at the reduced scale) before differencing: kill
 MOTION_LEVEL = 24  # gray levels a blurred pixel must change by to count as changed
 MOTION_MIN_PIXELS = 12  # changed pixels (reduced scale) that make a frame "moving"
 STABLE_FRAMES = 3  # consecutive still frames before a picture is analysed
-MATCH_MM = 2.5  # a hole this close to a known one is the same hole
+MATCH_MM = 3.0  # a hole this close to a known one is the same hole
+ROTATION_REACH_MM = 8.0  # pairs closer than this vote on the sheet rotation between frames
 NEW_TARGET_GONE_FRAC = 0.5  # if more than this share of known holes vanish, a new target was hung
 
 
@@ -60,20 +61,55 @@ def reduce(bgr: np.ndarray) -> np.ndarray:
     return cv2.resize(gray, None, fx=f, fy=f, interpolation=cv2.INTER_AREA) if f < 1 else gray
 
 
+def _xy(shots: list[Shot]) -> np.ndarray:
+    return np.array([s.xy_corrected() for s in shots], float).reshape(-1, 2)
+
+
+def align_rotation(reference: list[Shot], current: list[Shot], reach_mm: float = ROTATION_REACH_MM) -> float:
+    """Rotation (radians) that best maps current onto reference, from the holes
+    themselves. Rings give no angular reference, so a sheet re-hung at a slightly
+    different angle rotates every hole about the centre; the holes it shares with
+    the reference reveal the angle (weighted median of pairwise angle differences)."""
+    if len(reference) < 2 or len(current) < 2:
+        return 0.0
+    R, C = _xy(reference), _xy(current)
+    ang, w = [], []
+    for c in C:
+        d = np.hypot(R[:, 0] - c[0], R[:, 1] - c[1])
+        i = int(np.argmin(d))
+        rc, rr = np.hypot(*c), np.hypot(*R[i])
+        if d[i] < reach_mm and min(rc, rr) > 5.0:
+            delta = (np.arctan2(R[i, 1], R[i, 0]) - np.arctan2(c[1], c[0]) + np.pi) % (2 * np.pi) - np.pi
+            ang.append(delta)
+            w.append(min(rc, rr))  # outer holes pin the angle down better
+    if len(ang) < 2:
+        return 0.0
+    order = np.argsort(ang)
+    cum = np.cumsum(np.array(w)[order])
+    return float(np.array(ang)[order][np.searchsorted(cum, cum[-1] / 2)])
+
+
 def new_holes(reference: list[Shot], current: list[Shot], tol_mm: float = MATCH_MM) -> list[Shot]:
-    """Shots in `current` with no counterpart in `reference` (greedy nearest match)."""
-    pool = list(reference)
+    """Shots in `current` with no counterpart in `reference` (greedy nearest match
+    on ring-corrected positions, after removing any rotation between the two)."""
+    if not reference:
+        return list(current)
+    rot = align_rotation(reference, current)
+    c, s_ = np.cos(rot), np.sin(rot)
+    pool = list(_xy(reference))
     fresh = []
-    for s in sorted(current, key=lambda s: -s.score.decimal):
+    for shot in sorted(current, key=lambda s: -s.score.decimal):
+        x, y = shot.xy_corrected()
+        x, y = c * x - s_ * y, s_ * x + c * y
         if not pool:
-            fresh.append(s)
+            fresh.append(shot)
             continue
-        d = [np.hypot(s.x_mm - r.x_mm, s.y_mm - r.y_mm) for r in pool]
+        d = [np.hypot(x - p[0], y - p[1]) for p in pool]
         i = int(np.argmin(d))
         if d[i] <= tol_mm:
             pool.pop(i)
         else:
-            fresh.append(s)
+            fresh.append(shot)
     return fresh
 
 
@@ -153,7 +189,7 @@ class LiveScorer:
             self.reference = current
             return LiveEvent("locked", t, series=self.series, existing=len(current), result=result,
                              message="new target")
-        self.reference = current if fresh else self.reference
-        if fresh:
+        if fresh:  # known holes are kept even when a frame misses one: a flickering detection must not come back as new
+            self.reference = list(self.reference) + fresh
             return LiveEvent("shots", t, series=self.series, shots=fresh, result=result)
         return LiveEvent("still", t, series=self.series, result=result)

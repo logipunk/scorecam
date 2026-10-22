@@ -28,6 +28,15 @@ class Shot:
     def flags(self) -> list[str]:
         return self.hole.flags
 
+    def xy_corrected(self) -> tuple[float, float]:
+        """Position with the local ring offset removed: where the hole sits relative
+        to the printed rings, which is what stays put when the paper bends."""
+        r = float(np.hypot(self.x_mm, self.y_mm))
+        if r < 1e-6:
+            return self.x_mm, self.y_mm
+        k = (r - self.ring_offset_mm) / r
+        return self.x_mm * k, self.y_mm * k
+
     def clock(self) -> str:
         """Rough position description, e.g. '4 o'clock', for comparing with notes."""
         if np.hypot(self.x_mm, self.y_mm) < 1.0:
