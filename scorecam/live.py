@@ -27,7 +27,7 @@ from .calibrate import CalibrationError
 from .pipeline import CardResult, Shot, process_frame
 from .target import Target
 
-MOTION_SCALE = 4  # frames are compared at 1/MOTION_SCALE resolution
+MOTION_WIDTH = 320  # frames are compared at this width (a 4.5 mm hole at 0.07 mm/px is ~5 px wide here)
 MOTION_BLUR = 5  # box blur (px, at the reduced scale) before differencing: kills sensor noise
 MOTION_LEVEL = 24  # gray levels a blurred pixel must change by to count as changed
 MOTION_MIN_PIXELS = 12  # changed pixels (reduced scale) that make a frame "moving"
@@ -55,8 +55,9 @@ def frame_motion(prev_small: np.ndarray, cur_small: np.ndarray) -> int:
 
 
 def reduce(bgr: np.ndarray) -> np.ndarray:
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    return cv2.resize(gray, None, fx=1 / MOTION_SCALE, fy=1 / MOTION_SCALE, interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr
+    f = MOTION_WIDTH / gray.shape[1]
+    return cv2.resize(gray, None, fx=f, fy=f, interpolation=cv2.INTER_AREA) if f < 1 else gray
 
 
 def new_holes(reference: list[Shot], current: list[Shot], tol_mm: float = MATCH_MM) -> list[Shot]:
@@ -91,7 +92,11 @@ class LiveScorer:
         self.series = 0
         self.last_result: CardResult | None = None
 
-    def feed(self, bgr: np.ndarray, t: float | None = None) -> LiveEvent | None:
+    def feed(self, bgr: np.ndarray, t: float | None = None, full=None) -> LiveEvent | None:
+        """`bgr` is watched for motion (any resolution, e.g. the camera's low-res
+        stream). When a still picture is to be analysed, `full` supplies the
+        full-resolution frame: an array, a callable returning one, or None to use
+        `bgr` itself."""
         t = time.time() if t is None else t
         small = reduce(bgr)
         moving = self.prev_small is not None and frame_motion(self.prev_small, small) >= MOTION_MIN_PIXELS
@@ -105,7 +110,8 @@ class LiveScorer:
         if self.still_count < self.stable_frames or self.analysed_still:
             return None
         self.analysed_still = True
-        return self._analyse(bgr, t)
+        frame = full() if callable(full) else (bgr if full is None else full)
+        return self._analyse(frame, t)
 
     def _analyse(self, bgr: np.ndarray, t: float) -> LiveEvent | None:
         try:

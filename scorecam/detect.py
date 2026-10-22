@@ -85,20 +85,28 @@ def _disc(diameter_mm: float, px_per_mm: float) -> np.ndarray:
     return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (d, d))
 
 
-def zone_masks(shape: tuple, px_per_mm: float, T: np.ndarray, target: Target, cal: Calibration | None = None):
+def zone_masks(shape: tuple, px_per_mm: float, T: np.ndarray, target: Target, cal: Calibration | None = None,
+               polar: tuple | None = None):
     """(white_zone, black_zone) boolean masks from the target model, with every
-    black/white edge placed where it was measured on this card and a band around
-    it excluded from both zones."""
-    r, theta = polar_maps(shape, px_per_mm, T)
+    black/white edge placed where it was measured on this card (if `cal` carries
+    ring offsets) and a band around it excluded from both zones."""
+    r, theta = polar if polar is not None else polar_maps(shape, px_per_mm, T)
     is_black = np.zeros(r.shape, bool)
     edge = np.zeros(r.shape, bool)
-    inner_r = np.zeros(r.shape, np.float32)
+    inner_r = 0.0
     for ring, b in zip(target.rings, target.boundaries()):
-        outer_r = local_ring_radius(b.radius_mm, theta, cal)
+        outer_r = b.radius_mm
         if ring.color == "black":
             is_black |= (r >= inner_r) & (r < outer_r)
         if b.kind.startswith("edge"):
-            edge |= np.abs(r - outer_r) < EDGE_BAND_MM
+            if cal is not None and cal.ring_offsets_smooth is not None:
+                near = np.abs(r - outer_r) < EDGE_BAND_MM + float(np.abs(cal.ring_offsets_smooth).max()) + 0.1
+                local = local_ring_radius(outer_r, theta[near], cal)
+                edge[near] = np.abs(r[near] - local) < EDGE_BAND_MM
+                blk = np.zeros(r.shape, bool); blk[near] = r[near] < local
+                is_black[near] = blk[near] if ring.color == "black" else ~blk[near] & is_black[near]
+            else:
+                edge |= np.abs(r - outer_r) < EDGE_BAND_MM
         inner_r = outer_r
     if target.outer_color == "black":
         is_black |= r >= inner_r
@@ -205,6 +213,7 @@ def _card_rotation(card: np.ndarray, px_per_mm: float, centre: tuple, target: Ta
 
 
 def polar_maps(shape: tuple, px_per_mm: float, T: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-pixel (radius_mm, angle) about the ring centre."""
     h, w = shape[:2]
     yy, xx = np.indices((h, w), dtype=np.float32)
     dx, dy = xx - T[0, 2], yy - T[1, 2]
@@ -212,11 +221,18 @@ def polar_maps(shape: tuple, px_per_mm: float, T: np.ndarray) -> tuple[np.ndarra
 
 
 def thin_line_band(r: np.ndarray, theta: np.ndarray, target: Target, cal: Calibration | None) -> np.ndarray:
-    """Pixels within LINE_BAND_MM of a thin printed ring line, at its measured position."""
+    """Pixels within LINE_BAND_MM of a thin printed ring line, at its measured
+    position. The measured radius is evaluated only inside a narrow annulus
+    around each line (the offsets are bounded), which is what makes this cheap."""
     band = np.zeros(r.shape, bool)
+    reach = LINE_BAND_MM + (float(np.abs(cal.ring_offsets_smooth).max()) if cal is not None and cal.ring_offsets_smooth is not None else 0.0)
     for b in target.boundaries():
-        if b.kind.endswith("line"):
-            band |= np.abs(r - local_ring_radius(b.radius_mm, theta, cal)) < LINE_BAND_MM
+        if not b.kind.endswith("line"):
+            continue
+        near = np.abs(r - b.radius_mm) < reach + 0.1
+        local = local_ring_radius(b.radius_mm, theta[near], cal)
+        hit = np.abs(r[near] - local) < LINE_BAND_MM
+        band[near] = hit
     return band
 
 
@@ -353,11 +369,12 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
                  ) -> tuple[list[Hole], DetectionDebug]:
     card, theta_card = find_card_mask(bgr, px_per_mm, T, target)
     card = mask_ignore_regions(card, px_per_mm, T, target, theta_card)
-    white_zone, black_zone = zone_masks(bgr.shape, px_per_mm, T, target, cal if ZONES_FOLLOW_RINGS else None)
+    polar = polar_maps(bgr.shape, px_per_mm, T)
+    white_zone, black_zone = zone_masks(bgr.shape, px_per_mm, T, target, cal if ZONES_FOLLOW_RINGS else None, polar)
     white_zone &= card > 0
     black_zone &= card > 0
     dark, bright, warm, at_paper, printed, paper_level = cue_maps(bgr, px_per_mm, white_zone, black_zone)
-    r_map, th_map = polar_maps(bgr.shape, px_per_mm, T)
+    r_map, th_map = polar
     band = thin_line_band(r_map, th_map, target, cal)
     # On white, blank the printed ring lines so they cannot chain numerals and holes together.
     # In the black a torn rim is itself a thin ring: blanking a line through it cuts it and a

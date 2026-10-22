@@ -393,19 +393,47 @@ def calibrate(gray: np.ndarray, target: Target) -> Calibration:
 
 
 def rectify(image: np.ndarray, cal: Calibration, target: Target, px_per_mm: float,
-            margin_mm: float = 5.0) -> tuple[np.ndarray, np.ndarray]:
+            margin_mm: float = 5.0, grid_px: int = 8) -> tuple[np.ndarray, np.ndarray]:
     """Warp the image into the target frame. Returns (rectified, T) where T maps
-    target mm to rectified px and the image covers the whole card plus a margin."""
+    target mm to rectified px and the image covers the whole card plus a margin.
+    The mm->px map is evaluated on a coarse grid (grid_px) and interpolated: the
+    distortion polynomial is smooth, and this is ~50x cheaper than per pixel."""
     w_mm, h_mm = target.card_mm
     ox, oy = target.center_offset_mm
     x0, y0 = -w_mm / 2 - ox - margin_mm, -h_mm / 2 - oy - margin_mm
     T = np.array([[px_per_mm, 0, -x0 * px_per_mm], [0, px_per_mm, -y0 * px_per_mm], [0, 0, 1]])
     W, Hh = int((w_mm + 2 * margin_mm) * px_per_mm), int((h_mm + 2 * margin_mm) * px_per_mm)
-    yy, xx = np.indices((Hh, W), dtype=np.float64)
-    mm = np.stack([x0 + xx.ravel() / px_per_mm, y0 + yy.ravel() / px_per_mm], axis=1)
+    gw, gh = W // grid_px + 2, Hh // grid_px + 2
+    gy, gx = np.indices((gh, gw), dtype=np.float64)
+    mm = np.stack([x0 + gx.ravel() * grid_px / px_per_mm, y0 + gy.ravel() * grid_px / px_per_mm], axis=1)
     px = cal.to_px(mm)
-    mapx = px[:, 0].reshape(Hh, W).astype(np.float32)
-    mapy = px[:, 1].reshape(Hh, W).astype(np.float32)
+    coarse_x = px[:, 0].reshape(gh, gw).astype(np.float32)
+    coarse_y = px[:, 1].reshape(gh, gw).astype(np.float32)
+    yy, xx = np.indices((Hh, W), dtype=np.float32)
+    qx, qy = xx / grid_px, yy / grid_px
+    mapx = cv2.remap(coarse_x, qx, qy, cv2.INTER_LINEAR)
+    mapy = cv2.remap(coarse_y, qx, qy, cv2.INTER_LINEAR)
     rect = cv2.remap(image, mapx, mapy, cv2.INTER_AREA if px_per_mm < 1 / cal.mm_per_px else cv2.INTER_LINEAR,
                      borderMode=cv2.BORDER_CONSTANT)
     return rect, T
+
+
+def ring_offset_field(cal: Calibration, r_mm: np.ndarray, theta: np.ndarray) -> np.ndarray:
+    """Vectorised ring_offset_at over arrays of (r, theta): the local radial
+    displacement of the printed rings, interpolated over angle and radius."""
+    if cal.ring_offsets_smooth is None:
+        return np.zeros(r_mm.shape, np.float32)
+    offs = cal.ring_offsets_smooth  # [n_rings, n_angles]
+    radii = cal.ring_radii_mm
+    n = offs.shape[1]
+    a = (theta.ravel() % (2 * np.pi)) / (2 * np.pi) * n
+    i0 = np.floor(a).astype(int) % n
+    fa = (a - np.floor(a)).astype(np.float32)
+    cols = offs[:, i0] * (1 - fa) + offs[:, (i0 + 1) % n] * fa  # [n_rings, N]
+    r = np.clip(r_mm.ravel(), radii[0], radii[-1])
+    k = np.clip(np.searchsorted(radii, r), 1, len(radii) - 1)
+    span = radii[k] - radii[k - 1]
+    w = ((r - radii[k - 1]) / span).astype(np.float32)
+    idx = np.arange(len(r))
+    out = cols[k - 1, idx] * (1 - w) + cols[k, idx] * w
+    return out.reshape(r_mm.shape).astype(np.float32)
