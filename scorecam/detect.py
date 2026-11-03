@@ -26,7 +26,7 @@ BG_DISC_MM = 5.5  # local background disc: > hole diameter, < ring band width
 BG_SCALE = 2  # the background levels are computed at 1/BG_SCALE resolution (max/min pooled)
 EDGE_BAND_MM = 0.5  # ignore this band either side of a black/white edge (alignment)
 DARK_FRAC = 0.09  # hole must be this fraction darker than local paper
-DEEP_FRAC = 0.0  # hole darker than the local ink level by this fraction of paper level (0 = off)
+DEEP_FRAC = 0.2  # hole darker than the local (median) ink level by this fraction of paper level: rimless holes in the black with a dark backer (0 = off)
 BRIGHT_FRAC = 0.15  # torn rim in the black above the local ink level, as a fraction of paper level (flat light gives faint rims)
 WARM_SHIFT = 12.0  # Lab (a+b) shift from the zone's own tint
 FILL_MAX_MM2 = 12.0  # enclosed gaps smaller than this are filled
@@ -379,6 +379,14 @@ def _local_level(gray: np.ndarray, px_per_mm: float, op: int, scale: int | None 
     return cv2.resize(lvl, (w, h), interpolation=cv2.INTER_LINEAR).astype(np.float32)
 
 
+def _median_level(gray: np.ndarray, px_per_mm: float, scale: int = 4) -> np.ndarray:
+    """Local median over a 2 x BG_DISC_MM window, computed at 1/scale resolution."""
+    small = cv2.resize(gray, None, fx=1 / scale, fy=1 / scale, interpolation=cv2.INTER_AREA)
+    k = max(3, int(2 * BG_DISC_MM * px_per_mm / scale) | 1)
+    med = cv2.medianBlur(small, k)
+    return cv2.resize(med, (gray.shape[1], gray.shape[0]), interpolation=cv2.INTER_LINEAR).astype(np.float32)
+
+
 def cue_maps(bgr: np.ndarray, px_per_mm: float, white_zone: np.ndarray, black_zone: np.ndarray):
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (0, 0), 0.08 * px_per_mm)
@@ -390,9 +398,11 @@ def cue_maps(bgr: np.ndarray, px_per_mm: float, white_zone: np.ndarray, black_zo
     paper = np.where(white_zone, paper, paper_level).astype(np.float32)
     dark = ((paper - g) > DARK_FRAC * paper) & white_zone
     bright = ((g - ink) > BRIGHT_FRAC * paper_level) & black_zone
-    if DEEP_FRAC > 0:  # a hole in the black with no torn rim: darker than the ink around it
-        deep_level = cv2.GaussianBlur(ink, (0, 0), 0.5 * px_per_mm)
-        bright |= ((deep_level - g) > DEEP_FRAC * paper_level) & black_zone
+    if DEEP_FRAC > 0 and black_zone.any():
+        # a hole in the black with no torn rim (dark backer behind the paper): darker than the
+        # ink around it. `ink` is a min level and follows the hole itself, so the ink level here
+        # is a wide local median, which a hole is too small to move.
+        bright |= ((_median_level(gray, px_per_mm) - g) > DEEP_FRAC * paper_level) & black_zone
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     warm_raw = lab[..., 1].astype(np.float32) + lab[..., 2].astype(np.float32)
     warm_raw = cv2.GaussianBlur(warm_raw, (0, 0), 0.15 * px_per_mm)
