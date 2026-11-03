@@ -54,6 +54,7 @@ BRIDGE_MM = 1.4  # closing that rejoins a solid hole cut by a blanked line band
 ZONES_FOLLOW_RINGS = False  # place zone edges at measured ring positions (worse on obstructed cards)
 MAX_SINGLE_LENGTH_FACTOR = 1.45  # a blob longer than this x the pellet AND elongated holds more than one
 MAX_SINGLE_ASPECT = 1.4  # length / width above which a long blob is an overlap group
+HOLE_UNIT_MIN_FRAC = 0.7  # the measured single-hole size used for overlap counts is never below this x the pellet
 CARD_SCALE = 2  # the card outline is found at 1/CARD_SCALE resolution
 CARD_EDGE_MARGIN_MM = 2.5
 
@@ -460,13 +461,20 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
     cands = filled & cv2.dilate(opened, _disc(2 * RECOVER_MM, px_per_mm))
     strokes = numeral_stroke_mask(printed.astype(np.uint8), px_per_mm, T, target, theta_card, cal, card)
     numerals = numeral_centres(target, theta_card, cal)
-    single_area = np.pi * (pellet_mm / 2) ** 2
     holes, rejected = [], []
     cnts, _ = cv2.findContours(cands, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    for gi, c in enumerate(cnts):
+    shapes = [_blob_shape(c, px_per_mm) for c in cnts]
+    # Paper closes up behind the pellet: a single hole is smaller than the pellet (a 4.5 mm
+    # pellet leaves a ~3.8 mm core in B-40 paper). Overlap counts are measured in units of
+    # the card's own single holes, not the pellet, or three merged holes count as two.
+    singles = [sh["diameter"] for sh in shapes
+               if MIN_DIAMETER_MM <= sh["diameter"] <= MAX_DIAMETER_MM and sh["roundness"] >= MIN_ROUNDNESS
+               and sh["length"] / max(sh["width"], 0.1) <= MAX_SINGLE_ASPECT]
+    unit_mm = float(np.clip(np.median(singles), HOLE_UNIT_MIN_FRAC * pellet_mm, pellet_mm)) if len(singles) >= 2 else pellet_mm
+    single_area = np.pi * (unit_mm / 2) ** 2
+    for gi, (c, shape) in enumerate(zip(cnts, shapes)):
         blob = np.zeros(cands.shape, np.uint8)
         cv2.drawContours(blob, [c], -1, 1, -1)
-        shape = _blob_shape(c, px_per_mm)
         paper_frac = float(at_paper[blob > 0].mean())
         warm_frac = float(warm[blob > 0].mean())
         info = dict(**shape, paper_frac=paper_frac, warm_frac=warm_frac)
@@ -508,9 +516,9 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
                               flags=flags, **common))
         elif shape["length"] <= 4 * pellet_mm:
             # how many pellets: no more than the blob's length allows, no more than its area allows
-            n_est = max(2, min(4, int(round(shape["area"] / (single_area * 1.1))), int(round(shape["length"] / pellet_mm))))
+            n_est = max(2, min(4, int(round(shape["area"] / (single_area * 1.1))), int(round(shape["length"] / unit_mm))))
             # longer than one pellet: an overlap group (best effort split, flagged)
-            for (hx, hy) in split_overlap(c, n_est, pellet_mm, px_per_mm):
+            for (hx, hy) in split_overlap(c, n_est, unit_mm, px_per_mm):
                 holes.append(Hole(hx, hy, pellet_mm, shape["roundness"], shape["area"],
                                   flags=flags + ["overlap"], n_est=n_est, group=gi, **common))
         else:
