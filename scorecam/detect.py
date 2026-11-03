@@ -54,6 +54,10 @@ BRIDGE_MM = 1.4  # closing that rejoins a solid hole cut by a blanked line band
 ZONES_FOLLOW_RINGS = False  # place zone edges at measured ring positions (worse on obstructed cards)
 MAX_SINGLE_LENGTH_FACTOR = 1.45  # a blob longer than this x the pellet AND elongated holds more than one
 MAX_SINGLE_ASPECT = 1.4  # length / width above which a long blob is an overlap group
+MAX_GROUP_HOLES = 8  # most holes one merged blob can be split into
+MAX_GROUP_LENGTH_UNITS = 6  # a blob longer than this many single holes is not a hole group
+PEAK_SUPPRESS = 1.2  # after taking a core, no other core within this x the hole radius (closer holes are one blob to the eye too)
+MIN_PEAK_FRAC = 0.6  # a distance-transform peak below this x the hole radius is not another hole core
 HOLE_UNIT_MIN_FRAC = 0.7  # the measured single-hole size used for overlap counts is never below this x the pellet
 CARD_SCALE = 2  # the card outline is found at 1/CARD_SCALE resolution
 CARD_EDGE_MARGIN_MM = 2.5
@@ -453,8 +457,8 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
     # On white, blank the printed ring lines so they cannot chain numerals and holes together.
     # In the black a torn rim is itself a thin ring: blanking a line through it cuts it and a
     # closing cannot reliably rejoin it, so leave the white lines in; the opening below removes them.
-    cue = (bright | ((dark | warm) & ~band)).astype(np.uint8)
-    cue = cv2.morphologyEx(cue, cv2.MORPH_CLOSE, _disc(BRIDGE_MM, px_per_mm))  # across the blanked band
+    raw_cue = (bright | ((dark | warm) & ~band)).astype(np.uint8)
+    cue = cv2.morphologyEx(raw_cue, cv2.MORPH_CLOSE, _disc(BRIDGE_MM, px_per_mm))  # across the blanked band
     filled = fill_small_gaps(cue, FILL_MAX_MM2 * px_per_mm ** 2)
     opened = cv2.morphologyEx(filled, cv2.MORPH_OPEN, _disc(OPEN_DISC_MM, px_per_mm))
     # grow the surviving blobs back into the raw mask a little to recover torn edges
@@ -514,11 +518,25 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
                 continue
             holes.append(Hole(shape["x"], shape["y"], shape["diameter"], shape["roundness"], shape["area"],
                               flags=flags, **common))
-        elif shape["length"] <= 4 * pellet_mm:
-            # how many pellets: no more than the blob's length allows, no more than its area allows
-            n_est = max(2, min(4, int(round(shape["area"] / (single_area * 1.1))), int(round(shape["length"] / unit_mm))))
-            # longer than one pellet: an overlap group (best effort split, flagged)
-            for (hx, hy) in split_overlap(c, n_est, unit_mm, px_per_mm):
+        elif shape["length"] <= MAX_GROUP_LENGTH_UNITS * unit_mm:
+            # an overlap group: one hole core per distance-transform peak, at most as many as
+            # the area allows (best effort split, flagged)
+            # Two readings. Clean holes (air pistol, dark backer) are solid discs in the raw cue,
+            # one distance peak each, and bridging/filling may have glued several separate holes
+            # into this blob. Torn .22 holes are rims and fragments there, so for them the count
+            # comes from area and length on the filled blob, as before. Take whichever sees more.
+            n_max = max(2, min(MAX_GROUP_HOLES, int(round(shape["area"] / (single_area * 0.8)))))
+            by_cores = split_overlap(c, n_max, unit_mm, px_per_mm, raw_cue, MIN_PEAK_FRAC, PEAK_SUPPRESS)
+            n_est = max(2, min(MAX_GROUP_HOLES, int(round(shape["area"] / (single_area * 1.1))),
+                               int(round(shape["length"] / unit_mm))))
+            by_size = split_overlap(c, n_est, unit_mm, px_per_mm)
+            centres = by_cores if len(by_cores) >= len(by_size) else by_size
+            n_est = len(centres)
+            if n_est <= 1:  # one core: a single torn or smeared hole
+                holes.append(Hole(shape["x"], shape["y"], min(shape["diameter"], pellet_mm), shape["roundness"],
+                                  shape["area"], flags=flags + ["overlap"], group=gi, **common))
+                continue
+            for (hx, hy) in centres:
                 holes.append(Hole(hx, hy, pellet_mm, shape["roundness"], shape["area"],
                                   flags=flags + ["overlap"], n_est=n_est, group=gi, **common))
         else:
@@ -541,7 +559,8 @@ def _blob_shape(c: np.ndarray, px_per_mm: float) -> dict:
                 solidity=area / hull_area if hull_area > 0 else 0.0)
 
 
-def split_overlap(contour: np.ndarray, n: int, pellet_mm: float, px_per_mm: float,
+def split_overlap(contour: np.ndarray, n: int, pellet_mm: float, px_per_mm: float, raw: np.ndarray | None = None,
+                  min_peak: float = 0.0, suppress: float = 0.9,
                   ) -> list[tuple[float, float]]:
     """Best-effort split of a merged blob into n pellet-sized discs using the
     distance transform: take the deepest point, suppress one pellet radius around
@@ -549,14 +568,20 @@ def split_overlap(contour: np.ndarray, n: int, pellet_mm: float, px_per_mm: floa
     x, y, w, h = cv2.boundingRect(contour)
     sub = np.zeros((h + 2, w + 2), np.uint8)
     cv2.drawContours(sub, [contour - [x - 1, y - 1]], -1, 1, -1)
+    if raw is not None:  # the cue before bridging/filling: separate holes are still separate there
+        H, W = raw.shape
+        y0, y1, x0, x1 = max(y - 1, 0), min(y + h + 1, H), max(x - 1, 0), min(x + w + 1, W)
+        patch = np.zeros_like(sub)
+        patch[y0 - (y - 1):y1 - (y - 1), x0 - (x - 1):x1 - (x - 1)] = raw[y0:y1, x0:x1]
+        sub = sub & patch
     dist = cv2.distanceTransform(sub, cv2.DIST_L2, 5)
     r_px = pellet_mm / 2 * px_per_mm
     centres = []
     for _ in range(n):
         k = int(np.argmax(dist))
         py, px = divmod(k, dist.shape[1])
-        if dist[py, px] <= 0:
+        if dist[py, px] <= min_peak * r_px:  # what is left is a bridge or a torn edge, not a hole core
             break
         centres.append((float(px + x - 1), float(py + y - 1)))
-        cv2.circle(dist, (px, py), int(r_px * 0.9), 0, -1)
+        cv2.circle(dist, (px, py), int(r_px * suppress), 0, -1)
     return centres
