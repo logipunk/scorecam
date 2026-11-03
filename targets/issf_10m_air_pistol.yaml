@@ -20,5 +20,11 @@ outer_color: white
 # Printed ring numerals: in the middle of each listed ring band, at these angles
 # (degrees, 0 = right / 3 o'clock, 90 = down / 6 o'clock). Used to filter false holes.
 numeral_angles_deg: [0, 90, 180, 270]
-numeral_rings: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+numeral_rings: [1, 2, 3, 4, 5, 6, 7, 8]  # the 9 ring carries no numeral on the NTC print
+# Printed text on the National Target Co. B-40 sheet (mm from the ring centre, measured
+# from a Pi capture on 2026-11-03). Everything is below the rings.
+ignore_regions_mm:
+  - [-82, 74, -54, 98]   # NRA official competition logo, bottom left
+  - [-24, 80, 30, 98]    # "Made in America" / manufacturer box, bottom centre
+  - [62, 72, 98, 98]     # NTC logo, bottom right
 inner_ring_radius_mm: 2.5
