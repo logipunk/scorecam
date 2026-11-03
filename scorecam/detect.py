@@ -26,13 +26,13 @@ BG_DISC_MM = 5.5  # local background disc: > hole diameter, < ring band width
 BG_SCALE = 2  # the background levels are computed at 1/BG_SCALE resolution (max/min pooled)
 EDGE_BAND_MM = 0.5  # ignore this band either side of a black/white edge (alignment)
 DARK_FRAC = 0.09  # hole must be this fraction darker than local paper
-DEEP_FRAC = 0.2  # hole darker than the local (median) ink level by this fraction of paper level: rimless holes in the black with a dark backer (0 = off)
+DEEP_FRAC = 0.15  # hole darker than the local (median) ink level by this fraction of paper level: rimless holes in the black with a dark backer (0 = off)
 BRIGHT_FRAC = 0.15  # torn rim in the black above the local ink level, as a fraction of paper level (flat light gives faint rims)
 WARM_SHIFT = 12.0  # Lab (a+b) shift from the zone's own tint
 FILL_MAX_MM2 = 12.0  # enclosed gaps smaller than this are filled
 OPEN_DISC_MM = 2.6  # opening disc: kills lines/strokes, keeps a hole core (a .22 hole in paper closes to ~3 mm)
 RECOVER_MM = 0.6  # grow kept blobs back into the raw mask by this much (torn edges, not line stubs)
-MIN_DIAMETER_MM = 3.2  # single-hole equivalent diameter range
+MIN_DIAMETER_MM = 2.8  # single-hole equivalent diameter range (a 4.5 mm pellet leaves a ~3 mm dark core in B-40 paper)
 MAX_DIAMETER_MM = 6.2
 MIN_ROUNDNESS = 0.45  # 4*pi*area/perimeter^2; a torn .22 hole in paper is ragged, ~0.5
 MIN_SOLIDITY = 0.60  # blob area / convex hull area (overlap groups too)
