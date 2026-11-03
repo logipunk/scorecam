@@ -101,3 +101,20 @@ def test_same_sheet_twice_gives_no_shots():
     events = run(LiveScorer(target, 5.6, stable_frames=1), [a, b])
     assert events[0].kind == "locked" and events[0].existing >= 7
     assert all(e.kind != "shots" for e in events[1:]), [e.kind for e in events]
+
+
+def test_next_target_keeps_shots_and_starts_a_series(tmp_path):
+    target = load_target("issf_10m_air_pistol")
+    one = frame(target, [(1.0, -1.0)], tmp_path, 4.5)
+    two = frame(target, [(1.0, -1.0), (0.0, 14.0)], tmp_path, 4.5)
+    scorer = LiveScorer(target, 4.5)
+    events = run(scorer, [one] * 4 + [two] * 4)
+    assert [e.kind for e in events] == ["locked", "moving", "shots"]
+    scorer.next_target()  # a sheet with one hole already in it goes up
+    fresh = frame(target, [(-30.0, 6.0)], tmp_path, 4.5)
+    more = frame(target, [(-30.0, 6.0), (0.0, 14.0)], tmp_path, 4.5)
+    events = run(scorer, [fresh] * 6 + [more] * 4)  # the first lock looks twice, so the fresh sheet needs two analyses
+    kinds = [e.kind for e in events]
+    assert kinds == ["locked", "moving", "shots"], kinds
+    assert events[0].series == 2 and events[0].existing == 1
+    assert len(events[2].shots) == 1 and events[2].shots[0].score.value == 9

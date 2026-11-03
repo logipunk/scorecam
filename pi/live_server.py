@@ -18,6 +18,7 @@ HTTP:
     /events.json       JSON: all events of the current session
     /session/start?target=nra_b3&caliber=5.6&shooter=NAME   start a new session
     /session/stop
+    /next                     fresh sheet hung: re-lock, keep the session's shots, new series
     /zoom              toggle the 1:1 centre crop in the preview (focusing aid)
     /capture           save a full-res still to ~/captures (as the viewfinder did)
 """
@@ -64,7 +65,7 @@ td.s{font-weight:bold;font-size:22px}
 <img id=tgt src="/target.jpg" alt="" style="display:none">
 <div class=bar><button id=z onclick="go('/zoom')">Zoom OFF</button>
 <button onclick="go('/capture')">Capture</button>
-<button onclick="go('/rescan')">Rescan</button>
+<button onclick="go('/next')">Next target</button>
 <button onclick="startSession()">New session</button></div>
 <div id=state>starting</div><div id=focus></div>
 <div id=total></div>
@@ -260,6 +261,18 @@ class Service:
         self.state = "fresh start, waiting for a still picture"
         return f"rescan: new session {sid}"
 
+    def next_target(self) -> str:
+        """A fresh sheet: keep the session and its shots, re-lock on the next still picture."""
+        with self.lock:
+            if self.scorer is None:
+                return "no session"
+            self.scorer.next_target()
+            if self.writer:
+                self.events.append(self.writer.event("next_target", time.time(), series=self.scorer.series))
+            self.target_jpeg, self.stamp = None, 0
+            self.state = "next target, waiting for a still picture"
+            return "next target"
+
     def toggle_zoom(self) -> str:
         self.zoomed = not self.zoomed
         return "zoom 1:1 centre" if self.zoomed else "zoom full frame"
@@ -319,6 +332,8 @@ class Handler(server.BaseHTTPRequestHandler):
                 self.send_error(404)
             else:
                 self._send(service.target_jpeg, "image/jpeg")
+        elif u.path == "/next":
+            self._send(service.next_target(), "text/plain")
         elif u.path == "/rescan":
             self._send(service.rescan(), "text/plain")
         elif u.path == "/zoom":

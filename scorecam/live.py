@@ -158,6 +158,18 @@ class LiveScorer:
         self.series = 0
         self.last_result: CardResult | None = None
 
+    def next_target(self):
+        """A fresh sheet has been hung (or is about to be): forget the known holes and
+        lock again on the next still picture. Shots already recorded stay; the lock
+        starts a new series."""
+        self.locked = False
+        self.reference = None
+        self.pending_lock = None
+        self.suspect_new_target = False
+        self.analysed_still = False
+        self.analysis_due = False
+        self.still_count = 0
+
     def feed(self, bgr: np.ndarray, t: float | None = None, full=None) -> LiveEvent | None:
         """observe() then analyse() in one call. `bgr` is watched for motion (any
         resolution, e.g. the camera's low-res stream). When a still picture is to
