@@ -27,8 +27,8 @@ from .calibrate import CalibrationError
 from .pipeline import CardResult, Shot, process_frame
 from .target import Target
 
-MOTION_WIDTH = 320  # frames are compared at this width (a 4.5 mm hole at 0.07 mm/px is ~5 px wide here)
-MOTION_BLUR = 5  # box blur (px, at the reduced scale) before differencing: kills sensor noise
+MOTION_WIDTH = 640  # frames are compared at this width (a 4 mm air pistol hole at 0.06 mm/px is ~10 px wide here; at 320 it was ~5 px and vanished in the blur)
+MOTION_BLUR = 3  # box blur (px, at the reduced scale) before differencing: kills sensor noise
 MOTION_LEVEL = 24  # gray levels a blurred pixel must change by to count as changed
 MOTION_MIN_PIXELS = 12  # changed pixels (reduced scale) that make a frame "moving"
 STABLE_FRAMES = 3  # consecutive still frames before a picture is analysed
