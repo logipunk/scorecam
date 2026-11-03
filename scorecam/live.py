@@ -24,7 +24,7 @@ import cv2
 import numpy as np
 
 from .calibrate import CalibrationError
-from .pipeline import CardResult, Shot, process_frame
+from .pipeline import CardResult, FrameContext, Shot, process_frame, process_window
 from .target import Target
 
 MOTION_WIDTH = 640  # frames are compared at this width (a 4 mm air pistol hole at 0.06 mm/px is ~10 px wide here; at 320 it was ~5 px and vanished in the blur)
@@ -36,6 +36,8 @@ MATCH_MM = 3.0  # a hole this close to a known one is the same hole
 ROTATION_REACH_MM = 8.0  # pairs closer than this vote on the sheet rotation between frames
 NEW_TARGET_GONE_FRAC = 0.5  # if more than this share of known holes vanish, a new target was hung
 LOCK_ANALYSES = 2  # still frames analysed before the first lock; their holes are united
+MAX_WINDOW_MM = 60.0  # a change larger than this (sheet moved, hand in view) gets a full read
+CHANGE_MIN_PIXELS = 6  # a changed blob (reduced scale) smaller than this is noise
 
 
 @dataclass
@@ -60,6 +62,20 @@ def reduce(bgr: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr
     f = MOTION_WIDTH / gray.shape[1]
     return cv2.resize(gray, None, fx=f, fy=f, interpolation=cv2.INTER_AREA) if f < 1 else gray
+
+
+def change_regions(prev_small: np.ndarray, cur_small: np.ndarray) -> list[tuple[int, int, int, int]]:
+    """Bounding boxes (x0, y0, x1, y1, reduced px) of the compact changed blobs
+    between two reduced still frames."""
+    d = cv2.blur(cv2.absdiff(prev_small, cur_small), (MOTION_BLUR, MOTION_BLUR))
+    m = (d > MOTION_LEVEL).astype(np.uint8)
+    n, _, stats, _ = cv2.connectedComponentsWithStats(m)
+    out = []
+    for i in range(1, n):
+        x, y, w, h, a = stats[i]
+        if a >= CHANGE_MIN_PIXELS:
+            out.append((int(x), int(y), int(x + w), int(y + h)))
+    return out
 
 
 def _xy(shots: list[Shot]) -> np.ndarray:
@@ -157,6 +173,10 @@ class LiveScorer:
         self.suspect_new_target = False  # one analysis lost most known holes; waiting for a second opinion
         self.series = 0
         self.last_result: CardResult | None = None
+        self.context: FrameContext | None = None  # from the last full read: lets a window read skip calibration
+        self.analysed_small: np.ndarray | None = None  # reduced frame of the last analysed still picture
+        self.n_full = 0  # full reads done
+        self.n_window = 0  # window reads done
 
     def next_target(self):
         """A fresh sheet has been hung (or is about to be): forget the known holes and
@@ -169,6 +189,8 @@ class LiveScorer:
         self.analysed_still = False
         self.analysis_due = False
         self.still_count = 0
+        self.context = None
+        self.analysed_small = None
 
     def feed(self, bgr: np.ndarray, t: float | None = None, full=None) -> LiveEvent | None:
         """observe() then analyse() in one call. `bgr` is watched for motion (any
@@ -207,15 +229,45 @@ class LiveScorer:
         self.analysis_due = False
         return self._analyse(frame, t)
 
+    def _window(self, bgr: np.ndarray) -> tuple | None:
+        """Where the picture changed since the last analysed still, in mm, if the
+        change is compact enough for a window read; None means read in full."""
+        if not self.locked or self.context is None or self.analysed_small is None or self.prev_small is None:
+            return None
+        if self.analysed_small.shape != self.prev_small.shape:
+            return None
+        boxes = change_regions(self.analysed_small, self.prev_small)
+        if not boxes:
+            return ()  # nothing changed: nothing to look for
+        scale = bgr.shape[1] / self.prev_small.shape[1]
+        corners = np.array([(x, y) for (x0, y0, x1, y1) in boxes for (x, y) in ((x0, y0), (x1, y0), (x0, y1), (x1, y1))],
+                           float) * scale
+        mm = self.context.calibration.to_mm(corners)
+        x0, y0 = mm.min(axis=0)
+        x1, y1 = mm.max(axis=0)
+        if x1 - x0 > MAX_WINDOW_MM or y1 - y0 > MAX_WINDOW_MM:
+            return None
+        return (float(x0), float(y0), float(x1), float(y1))
+
     def _analyse(self, bgr: np.ndarray, t: float) -> LiveEvent | None:
+        window = self._window(bgr)
+        if window == ():
+            self.analysed_small = self.prev_small
+            return LiveEvent("still", t, series=self.series, result=self.last_result)
+        if window is not None:
+            return self._analyse_window(bgr, t, window)
         try:
             result = process_frame(bgr, self.target, self.pellet_mm, roi=True)
         except CalibrationError as e:
+            self.context = None
             if self.locked:
                 self.locked = False
                 return LiveEvent("lost", t, series=self.series, message=str(e))
             return LiveEvent("still", t, message=f"no target: {e}")
+        self.n_full += 1
         self.last_result = result
+        self.context = result.context
+        self.analysed_small = self.prev_small
         current = [s for s in result.shots if "off_target" not in s.flags]
         if not self.locked:
             if self.reference is None and self.pending_lock is None and LOCK_ANALYSES > 1:
@@ -245,6 +297,23 @@ class LiveScorer:
                              message="new target")
         self.suspect_new_target = False
         if fresh:  # known holes are kept even when a frame misses one: a flickering detection must not come back as new
+            self.reference = list(self.reference) + fresh
+            return LiveEvent("shots", t, series=self.series, shots=fresh, result=result)
+        return LiveEvent("still", t, series=self.series, result=result)
+
+    def _analyse_window(self, bgr: np.ndarray, t: float, window: tuple) -> LiveEvent:
+        """A small change on a locked target: read only that window, with the
+        calibration of the last full read. Known holes elsewhere are not re-checked,
+        so a new target cannot be declared from here (that is a big change anyway)."""
+        result = process_window(bgr, self.target, self.pellet_mm, self.context, window)
+        self.n_window += 1
+        self.analysed_small = self.prev_small
+        current = [s for s in result.shots if "off_target" not in s.flags]
+        x0, y0, x1, y1 = result.window_mm
+        inside = [s for s in self.reference
+                  if x0 <= s.x_mm <= x1 and y0 <= s.y_mm <= y1]
+        fresh = new_holes(inside, current)
+        if fresh:
             self.reference = list(self.reference) + fresh
             return LiveEvent("shots", t, series=self.series, shots=fresh, result=result)
         return LiveEvent("still", t, series=self.series, result=result)

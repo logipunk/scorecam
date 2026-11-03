@@ -127,6 +127,8 @@ class Service:
         self.shots: list[dict] = []
         self.events: list[dict] = []
         self.target_jpeg: bytes | None = None
+        self.full_rect = None  # last full-read rectified picture (window reads are drawn on it)
+        self.full_T = None
         self.stamp = 0
         self.start_session(target_name, caliber, "")
         threading.Thread(target=self.loop, daemon=True).start()
@@ -202,14 +204,21 @@ class Service:
         """The analysed frame with every hole marked: known ones white, this
         event's new shots yellow with their session number."""
         res = ev.result
-        img = res.rectified.copy()
-        T = res.T_mm_to_rect
+        if res.window_mm is None:  # a full read: new background picture
+            self.full_rect = res.rectified
+            self.full_T = res.T_mm_to_rect
+            known = [s for s in res.shots if "off_target" not in s.flags]
+        elif self.full_rect is None:
+            return
+        else:  # a window read: draw what the scorer knows on the last full picture
+            known = list(self.scorer.reference or [])
+        img = self.full_rect.copy()
+        T = self.full_T
         fresh = {id(s) for s in ev.shots}
         n0 = len(self.shots) - len(ev.shots) if ev.kind == "shots" else len(self.shots)
         k = 0
-        for s in sorted(res.shots, key=lambda s: -s.score.decimal):
-            if "off_target" in s.flags:
-                continue
+        known_ids = {id(s) for s in known}
+        for s in sorted(known + [s for s in ev.shots if id(s) not in known_ids], key=lambda s: -s.score.decimal):
             p = (int(T[0, 2] + s.x_mm * T[0, 0]), int(T[1, 2] + s.y_mm * T[1, 1]))
             new = id(s) in fresh
             col = (0, 220, 255) if new else (255, 255, 255)
@@ -270,6 +279,7 @@ class Service:
             if self.writer:
                 self.events.append(self.writer.event("next_target", time.time(), series=self.scorer.series))
             self.target_jpeg, self.stamp = None, 0
+            self.full_rect = None
             self.state = "next target, waiting for a still picture"
             return "next target"
 

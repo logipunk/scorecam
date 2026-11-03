@@ -53,14 +53,17 @@ def test_turning_target_strings(tmp_path):
 
 def test_fixed_target_one_shot_at_a_time(tmp_path):
     target = load_target("issf_10m_air_pistol")
-    holes = [(1.0, -1.0), (0.0, 14.0), (-30.0, 6.0)]
+    holes = [(1.0, -1.0), (0.0, 14.0), (-30.0, 6.0), (62.0, 58.0)]  # the last one misses the rings but hits the card
     frames = [frame(target, [], tmp_path, 4.5)] * 4
     for n in range(1, len(holes) + 1):  # the first changed frame counts as motion, then 3 still ones
         frames += [frame(target, holes[:n], tmp_path, 4.5)] * 4
-    events = run(LiveScorer(target, 4.5), frames)
+    scorer = LiveScorer(target, 4.5)
+    events = run(scorer, frames)
     shots = [e for e in events if e.kind == "shots"]
-    assert [len(e.shots) for e in shots] == [1, 1, 1]
-    assert [e.shots[0].score.value for e in shots] == [10, 9, 7]
+    assert [len(e.shots) for e in shots] == [1, 1, 1, 1]
+    assert scorer.n_window >= 3, (scorer.n_full, scorer.n_window)  # single holes are read in a window, not in full
+    assert [e.shots[0].score.value for e in shots] == [10, 9, 7, 0]
+    assert "miss" in shots[3].shots[0].flags
     assert all(e.series == 1 for e in shots)  # the target never turned
 
 

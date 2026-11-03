@@ -87,6 +87,8 @@ class DetectionDebug:
     card_mask: np.ndarray
     numeral_strokes: np.ndarray
     rejected: list[dict]
+    card_theta: float = 0.0
+    paper_level: float = 0.0
 
 
 def _disc(diameter_mm: float, px_per_mm: float) -> np.ndarray:
@@ -247,7 +249,9 @@ def polar_maps(shape: tuple, px_per_mm: float, T: np.ndarray) -> tuple[np.ndarra
         yy, xx = np.indices((h, w), dtype=np.float32)
         dx, dy = xx - T[0, 2], yy - T[1, 2]
         hit = np.hypot(dx, dy) / px_per_mm, np.arctan2(dy, dx)
-        _polar_cache.clear()
+        if len(_polar_cache) >= 4:  # live mode alternates full frames and small windows
+            _polar_cache.pop(next(iter(_polar_cache)))
+            _annulus_cache.clear()  # its entries are keyed by the id of a map that may now be freed
         _polar_cache[key] = hit
     return hit
 
@@ -259,7 +263,7 @@ ANNULUS_QUANT_MM = 0.5
 def annulus_index(r: np.ndarray, radius_mm: float, half_width_mm: float) -> np.ndarray:
     """Flat indices of the pixels within half_width_mm of radius_mm (cached per map)."""
     hw = float(np.ceil(half_width_mm / ANNULUS_QUANT_MM) * ANNULUS_QUANT_MM)  # quantise so that the cache hits
-    key = (id(r), round(radius_mm, 3), hw)
+    key = (id(r), r.shape, round(radius_mm, 3), hw)
     hit = _annulus_cache.get(key)
     if hit is None:
         if len(_annulus_cache) > 64:
@@ -392,13 +396,15 @@ def _median_level(gray: np.ndarray, px_per_mm: float, scale: int = 4) -> np.ndar
     return cv2.resize(med, (gray.shape[1], gray.shape[0]), interpolation=cv2.INTER_LINEAR).astype(np.float32)
 
 
-def cue_maps(bgr: np.ndarray, px_per_mm: float, white_zone: np.ndarray, black_zone: np.ndarray):
+def cue_maps(bgr: np.ndarray, px_per_mm: float, white_zone: np.ndarray, black_zone: np.ndarray,
+             paper_level: float | None = None):
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (0, 0), 0.08 * px_per_mm)
     paper = _local_level(gray, px_per_mm, cv2.MORPH_CLOSE)  # local white level
     ink = _local_level(gray, px_per_mm, cv2.MORPH_OPEN)  # local dark level
     g = gray.astype(np.float32)
-    paper_level = float(np.median(paper[white_zone])) if white_zone.any() else float(gray.max())
+    if paper_level is None:  # a window inside the black has no paper of its own: the caller passes it
+        paper_level = float(np.median(paper[white_zone])) if white_zone.any() else float(gray.max())
     # paper level is only meaningful in white zones; inside the black use the card-wide level
     paper = np.where(white_zone, paper, paper_level).astype(np.float32)
     dark = ((paper - g) > DARK_FRAC * paper) & white_zone
@@ -444,14 +450,21 @@ def fill_small_gaps(mask: np.ndarray, max_area_px: float) -> np.ndarray:
 
 def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Target,
                  cal: Calibration | None = None, pellet_mm: float = 4.5,
+                 card: tuple[np.ndarray, float] | None = None, paper_level: float | None = None,
                  ) -> tuple[list[Hole], DetectionDebug]:
-    card, theta_card = find_card_mask(bgr, px_per_mm, T, target)
-    card = mask_ignore_regions(card, px_per_mm, T, target, theta_card)
+    """Holes in a rectified image. `card` (mask with ignore regions applied, card
+    rotation) and `paper_level` can be handed in from an earlier full read of the
+    same target when `bgr` is only a window of it."""
+    if card is None:
+        card, theta_card = find_card_mask(bgr, px_per_mm, T, target)
+        card = mask_ignore_regions(card, px_per_mm, T, target, theta_card)
+    else:
+        card, theta_card = card
     polar = polar_maps(bgr.shape, px_per_mm, T)
     white_zone, black_zone = zone_masks(bgr.shape, px_per_mm, T, target, cal if ZONES_FOLLOW_RINGS else None, polar)
     white_zone &= card > 0
     black_zone &= card > 0
-    dark, bright, warm, at_paper, printed, paper_level = cue_maps(bgr, px_per_mm, white_zone, black_zone)
+    dark, bright, warm, at_paper, printed, paper_level = cue_maps(bgr, px_per_mm, white_zone, black_zone, paper_level)
     r_map, th_map = polar
     band = thin_line_band(r_map, th_map, target, cal)
     # On white, blank the printed ring lines so they cannot chain numerals and holes together.
@@ -541,7 +554,7 @@ def detect_holes(bgr: np.ndarray, px_per_mm: float, T: np.ndarray, target: Targe
                                   flags=flags + ["overlap"], n_est=n_est, group=gi, **common))
         else:
             rejected.append({**info, "why": f"too big (d={shape['diameter']:.1f})"})
-    return holes, DetectionDebug(dark, bright, warm, cands, card, strokes, rejected)
+    return holes, DetectionDebug(dark, bright, warm, cands, card, strokes, rejected, theta_card, paper_level)
 
 
 def _blob_shape(c: np.ndarray, px_per_mm: float) -> dict:

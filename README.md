@@ -47,11 +47,14 @@ frame is analysed and the holes that were not there before are reported as new
 shots (`scripts/live_replay.py FRAMES... --target nra_b3 --caliber 5.6` replays
 recorded frames; add `--repeat 3` when feeding single stills). Each face-on
 period of a turning target is a series; a target with no rings in view is
-"lost", and a fresh sheet (most known holes gone) re-locks. Sessions are written
-as `sessions/<id>/session.json` + `events.jsonl` + `frames/`.
+"lost", and a fresh sheet (most known holes gone) re-locks. Once locked, a small
+change (one pellet) is read in a window around it with the lock's calibration,
+which is ~30x cheaper than a full read; a large change (sheet moved, hand in
+view) gets a full read. Sessions are written as `sessions/<id>/session.json` +
+`events.jsonl` + `frames/`.
 
 On the Pi, `pi/live_server.py` runs the camera, the scorer and the phone page
-(`http://scorecam.local:8000/`: live view, zoom, capture, new session, shot list).
+(`http://scorecam.local:8000/`: live view, zoom, capture, next target, new session, shot list).
 Analysis of one frame takes ~14 s on a Pi 4 (ring area only, 10 px/mm).
 
 ## License

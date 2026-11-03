@@ -401,7 +401,8 @@ def calibrate(gray: np.ndarray, target: Target) -> Calibration:
 
 
 def rectify(image: np.ndarray, cal: Calibration, target: Target, px_per_mm: float,
-            margin_mm: float = 5.0, grid_px: int = 8, roi_mm: float | None = None) -> tuple[np.ndarray, np.ndarray]:
+            margin_mm: float = 5.0, grid_px: int = 8, roi_mm: float | None = None,
+            bounds_mm: tuple[float, float, float, float] | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Warp the image into the target frame. Returns (rectified, T) where T maps
     target mm to rectified px and the image covers the whole card plus a margin,
     or, with roi_mm, only a square reaching roi_mm beyond the outer scoring ring
@@ -414,8 +415,11 @@ def rectify(image: np.ndarray, cal: Calibration, target: Target, px_per_mm: floa
         half = target.outer_radius_mm + roi_mm
         w_mm, h_mm, ox, oy = 2 * half, 2 * half, 0.0, 0.0
     x0, y0 = -w_mm / 2 - ox - margin_mm, -h_mm / 2 - oy - margin_mm
-    T = np.array([[px_per_mm, 0, -x0 * px_per_mm], [0, px_per_mm, -y0 * px_per_mm], [0, 0, 1]])
     W, Hh = int((w_mm + 2 * margin_mm) * px_per_mm), int((h_mm + 2 * margin_mm) * px_per_mm)
+    if bounds_mm is not None:  # an explicit window (x0, y0, width, height) in mm, no margin
+        x0, y0, w_mm, h_mm = bounds_mm
+        W, Hh = int(round(w_mm * px_per_mm)), int(round(h_mm * px_per_mm))
+    T = np.array([[px_per_mm, 0, -x0 * px_per_mm], [0, px_per_mm, -y0 * px_per_mm], [0, 0, 1]])
     gw, gh = W // grid_px + 2, Hh // grid_px + 2
     gy, gx = np.indices((gh, gw), dtype=np.float64)
     mm = np.stack([x0 + gx.ravel() * grid_px / px_per_mm, y0 + gy.ravel() * grid_px / px_per_mm], axis=1)
