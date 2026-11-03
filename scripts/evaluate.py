@@ -25,6 +25,9 @@ from scorecam.target import load_target  # noqa: E402
 SKIP = {"test.jpg", "hole_crop.jpg"}
 
 
+OFF = {"off_target", "miss"}  # outside the rings: not a hand-scored hole in the ground truth
+
+
 def match(expected: list, found: list) -> tuple[list, list, list]:
     """Returns (pairs [(exp, shot)], misses [exp], false_positives [shot])."""
     pairs, pool = [], list(found)
@@ -42,7 +45,7 @@ def match(expected: list, found: list) -> tuple[list, list, list]:
             pool.remove(hit)
     misses = []
     for e in rest:  # unscored: any remaining on-target detection counts
-        on_target = [s for s in pool if "off_target" not in s.flags]
+        on_target = [s for s in pool if not OFF & set(s.flags)]
         if on_target:
             pairs.append((e, on_target[0]))
             pool.remove(on_target[0])
@@ -101,7 +104,7 @@ def main():
         for e in misses:
             print(f"  MISSED     expected {str(e.get('score')):4s}  seen: {e.get('seen', '')!r}")
         for s in fps:
-            print(f"  {'OFF-TARGET' if 'off_target' in s.flags else 'FALSE POS '} got {s.score.value:2d} ({s.score.decimal:4.1f}) {s.clock():10s} d={s.score.distance_mm:5.1f} mm"
+            print(f"  {'OFF-TARGET' if OFF & set(s.flags) else 'FALSE POS '} got {s.score.value:2d} ({s.score.decimal:4.1f}) {s.clock():10s} d={s.score.distance_mm:5.1f} mm"
                   + (f"  [{', '.join(s.flags)}]" if s.flags else ""))
         totals["expected"] += len(expected)
         totals["found"] += len(res.shots)
@@ -109,8 +112,8 @@ def main():
         totals["score_checked"] += len(checked)
         totals["score_ok"] += len(ok)
         totals["missed"] += len(misses)
-        totals["fp"] += sum(1 for s in fps if "off_target" not in s.flags)
-        totals["off_target"] += sum(1 for s in fps if "off_target" in s.flags)
+        totals["fp"] += sum(1 for s in fps if not OFF & set(s.flags))
+        totals["off_target"] += sum(1 for s in fps if OFF & set(s.flags))
         totals["flagged"] += sum(1 for s in res.shots if s.flags)
     t = totals
     print("\nSUMMARY")
